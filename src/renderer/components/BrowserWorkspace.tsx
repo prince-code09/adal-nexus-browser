@@ -7,7 +7,6 @@ import {
   Lock,
   UserCheck,
   Bot,
-  ExternalLink,
   Laptop,
 } from 'lucide-react';
 

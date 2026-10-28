@@ -45,7 +45,7 @@ export const CompanionPanel: React.FC<CompanionPanelProps> = ({
   pendingApproval,
   onApprovalResponse,
 }) => {
-  const [goalInput, setGoalInput] = useState('');
+  const [goalInput, setGoalInput] = useState(currentGoal || '');
   const [activeTab, setActiveTab] = useState<'plan' | 'logs'>('plan');
   const logEndRef = useRef<HTMLDivElement>(null);
 

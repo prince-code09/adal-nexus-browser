@@ -163,8 +163,72 @@ export interface ElectronAPI {
   onBrowserStateChanged: (callback: (data: BrowserState) => void) => () => void;
 }
 
+import type {
+  BrowserTab,
+  Bookmark,
+  HistoryItem,
+  DownloadItem,
+  BrowserSettings,
+  BrowserBounds,
+} from './browser-types';
+
+export * from './browser-types';
+
+export interface AdaLNexusAPI {
+  // Window controls
+  minimize: () => void;
+  maximize: () => void;
+  close: () => void;
+  isMaximized: () => Promise<boolean>;
+
+  // Tabs
+  createTab: (url?: string) => Promise<BrowserTab>;
+  switchTab: (tabId: string) => Promise<boolean>;
+  closeTab: (tabId: string) => Promise<boolean>;
+  getTabs: () => Promise<BrowserTab[]>;
+  setBounds: (bounds: BrowserBounds) => Promise<void>;
+
+  // Navigation
+  navigate: (tabId: string, urlOrQuery: string) => Promise<boolean>;
+  goBack: (tabId: string) => Promise<boolean>;
+  goForward: (tabId: string) => Promise<boolean>;
+  reload: (tabId: string) => Promise<boolean>;
+  stop: (tabId: string) => Promise<boolean>;
+  goHome: (tabId: string) => Promise<boolean>;
+
+  // Bookmarks
+  getBookmarks: () => Promise<Bookmark[]>;
+  addBookmark: (bookmark: { title: string; url: string; favicon?: string }) => Promise<Bookmark>;
+  removeBookmark: (idOrUrl: string) => Promise<boolean>;
+  isBookmarked: (url: string) => Promise<boolean>;
+
+  // History
+  getHistory: () => Promise<HistoryItem[]>;
+  clearHistory: () => Promise<void>;
+  removeHistoryItem: (id: string) => Promise<boolean>;
+
+  // Downloads
+  getDownloads: () => Promise<DownloadItem[]>;
+  openDownloadFile: (id: string) => Promise<boolean>;
+  showDownloadInFolder: (id: string) => Promise<boolean>;
+  cancelDownload: (id: string) => Promise<boolean>;
+
+  // Settings
+  getBrowserSettings: () => Promise<BrowserSettings>;
+  saveBrowserSettings: (settings: Partial<BrowserSettings>) => Promise<BrowserSettings>;
+
+  // Events
+  onTabsUpdated: (callback: (tabs: BrowserTab[]) => void) => () => void;
+  onActiveTabChanged: (callback: (tab: BrowserTab | null) => void) => () => void;
+  onDownloadUpdated: (callback: (download: DownloadItem) => void) => () => void;
+  onHistoryUpdated: (callback: (history: HistoryItem[]) => void) => () => void;
+  onBookmarksUpdated: (callback: (bookmarks: Bookmark[]) => void) => () => void;
+  onSettingsUpdated: (callback: (settings: BrowserSettings) => void) => () => void;
+}
+
 declare global {
   interface Window {
     electronAPI?: ElectronAPI;
+    adalNexus?: AdaLNexusAPI;
   }
 }

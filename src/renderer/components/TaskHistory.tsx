@@ -1,5 +1,5 @@
 import React from 'react';
-import { History, Calendar, CheckCircle2, Clock, FileSpreadsheet, ArrowRight } from 'lucide-react';
+import { History, Clock, FileSpreadsheet, ArrowRight } from 'lucide-react';
 import type { TaskRecord } from '../../shared/types';
 import { VerificationBadge } from './VerificationBadge';
 
