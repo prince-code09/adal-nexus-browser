@@ -63,12 +63,18 @@ export const App: React.FC = () => {
   useEffect(() => {
     if (!api) return;
 
-    // Load initial tabs
+    // Load initial tabs & active tab
     api.getTabs().then((initialTabs) => {
       setTabs(initialTabs);
-      if (initialTabs.length > 0) {
-        setActiveTab(initialTabs[0]);
-      }
+      api.getActiveTab().then((currentActive) => {
+        if (currentActive) {
+          setActiveTab(currentActive);
+        } else if (initialTabs.length > 0) {
+          setActiveTab(initialTabs[0]);
+        }
+      }).catch(() => {
+        if (initialTabs.length > 0) setActiveTab(initialTabs[0]);
+      });
     });
 
     // Load bookmarks
@@ -197,24 +203,58 @@ export const App: React.FC = () => {
   });
 
   // Tab Actions
-  const handleSelectTab = (tabId: string) => {
-    api?.switchTab(tabId);
+  const handleSelectTab = async (tabId: string) => {
+    if (!api) return;
+    await api.switchTab(tabId);
+    const target = tabs.find((t) => t.id === tabId);
+    if (target) {
+      setActiveTab(target);
+      setTimeout(syncBounds, 10);
+    }
   };
 
-  const handleCloseTab = (tabId: string) => {
-    api?.closeTab(tabId);
+  const handleCloseTab = async (tabId: string) => {
+    if (!api) return;
+    await api.closeTab(tabId);
   };
 
-  const handleNewTab = () => {
-    api?.createTab('adal://newtab');
+  const handleNewTab = async () => {
+    if (!api) return;
+    const newTab = await api.createTab('adal://newtab');
+    if (newTab) {
+      setActiveTab(newTab);
+    }
   };
 
   // Navigation Actions
-  const handleNavigate = (urlOrQuery: string) => {
+  const handleNavigate = async (urlOrQuery: string) => {
+    if (!api) return;
+    const trimmed = urlOrQuery.trim();
+    if (!trimmed) return;
+
+    // Immediately synchronize workspace bounds
+    syncBounds();
+
     if (!activeTab) {
-      api?.createTab(urlOrQuery);
+      const created = await api.createTab(trimmed);
+      if (created) {
+        setActiveTab(created);
+      }
     } else {
-      api?.navigate(activeTab.id, urlOrQuery);
+      // Optimistically update active tab so NewTabPage immediately unmounts
+      // and WebContentsView displays the real website or search results
+      const isStillNewTab = trimmed === 'adal://newtab';
+      setActiveTab((prev) =>
+        prev
+          ? {
+              ...prev,
+              isNewTab: isStillNewTab,
+              url: trimmed,
+              isLoading: !isStillNewTab,
+            }
+          : prev
+      );
+      await api.navigate(activeTab.id, trimmed);
     }
   };
 

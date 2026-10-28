@@ -167,11 +167,16 @@ export class TabManager {
   }
 
   navigate(tabId: string, urlOrQuery: string): boolean {
+    console.log('[TabManager.navigate] called with:', { tabId, urlOrQuery, allTabIds: this.tabs.map(t => t.id) });
     const tab = this.tabs.find((t) => t.id === tabId);
-    if (!tab) return false;
+    if (!tab) {
+      console.warn('[TabManager.navigate] tab NOT found for tabId:', tabId);
+      return false;
+    }
 
     const settings = this.store.getSettings();
     const resolved = resolveUrlOrSearch(urlOrQuery, settings.searchEngine);
+    console.log('[TabManager.navigate] resolved URL:', resolved);
 
     if (resolved === 'adal://newtab') {
       tab.info.isNewTab = true;
@@ -191,19 +196,19 @@ export class TabManager {
     tab.info.title = resolved;
     tab.info.isLoading = true;
 
-    if (this.activeTabId === tabId) {
-      const win = this.getMainWindow();
-      if (win && !win.isDestroyed()) {
-        win.contentView.addChildView(tab.view);
-      }
-      tab.view.setBounds({
-        x: Math.round(this.bounds.x),
-        y: Math.round(this.bounds.y),
-        width: Math.round(this.bounds.width),
-        height: Math.round(this.bounds.height),
-      });
-      tab.view.setVisible(true);
+    // Switch active tab to this tab and show view
+    this.activeTabId = tabId;
+    const win = this.getMainWindow();
+    if (win && !win.isDestroyed()) {
+      win.contentView.addChildView(tab.view);
     }
+    tab.view.setBounds({
+      x: Math.round(this.bounds.x),
+      y: Math.round(this.bounds.y),
+      width: Math.round(this.bounds.width),
+      height: Math.round(this.bounds.height),
+    });
+    tab.view.setVisible(true);
 
     // Record in history
     if (!tab.info.isNewTab && !resolved.startsWith('data:text/html')) {
@@ -229,8 +234,14 @@ export class TabManager {
 
   goBack(tabId: string): boolean {
     const tab = this.tabs.find((t) => t.id === tabId);
-    if (tab && tab.view.webContents.canGoBack()) {
-      tab.view.webContents.goBack();
+    if (!tab) return false;
+    const wc = tab.view.webContents as any;
+    if (wc.navigationHistory ? wc.navigationHistory.canGoBack() : wc.canGoBack()) {
+      if (wc.navigationHistory) {
+        wc.navigationHistory.goBack();
+      } else {
+        wc.goBack();
+      }
       return true;
     }
     return false;
@@ -238,8 +249,14 @@ export class TabManager {
 
   goForward(tabId: string): boolean {
     const tab = this.tabs.find((t) => t.id === tabId);
-    if (tab && tab.view.webContents.canGoForward()) {
-      tab.view.webContents.goForward();
+    if (!tab) return false;
+    const wc = tab.view.webContents as any;
+    if (wc.navigationHistory ? wc.navigationHistory.canGoForward() : wc.canGoForward()) {
+      if (wc.navigationHistory) {
+        wc.navigationHistory.goForward();
+      } else {
+        wc.goForward();
+      }
       return true;
     }
     return false;
@@ -287,8 +304,9 @@ export class TabManager {
 
     wc.on('did-stop-loading', () => {
       tab.info.isLoading = false;
-      tab.info.canGoBack = wc.canGoBack();
-      tab.info.canGoForward = wc.canGoForward();
+      const anyWc = wc as any;
+      tab.info.canGoBack = anyWc.navigationHistory ? anyWc.navigationHistory.canGoBack() : wc.canGoBack();
+      tab.info.canGoForward = anyWc.navigationHistory ? anyWc.navigationHistory.canGoForward() : wc.canGoForward();
       this.broadcastTabs();
       if (this.activeTabId === tab.id) {
         this.broadcastActiveTab();
@@ -316,8 +334,9 @@ export class TabManager {
     wc.on('did-navigate', (_event, url) => {
       tab.info.url = url;
       tab.info.isNewTab = url === 'adal://newtab';
-      tab.info.canGoBack = wc.canGoBack();
-      tab.info.canGoForward = wc.canGoForward();
+      const anyWc = wc as any;
+      tab.info.canGoBack = anyWc.navigationHistory ? anyWc.navigationHistory.canGoBack() : wc.canGoBack();
+      tab.info.canGoForward = anyWc.navigationHistory ? anyWc.navigationHistory.canGoForward() : wc.canGoForward();
 
       if (!tab.info.isNewTab && !url.startsWith('data:text/html')) {
         this.store.addHistory({
@@ -339,8 +358,9 @@ export class TabManager {
 
     wc.on('did-navigate-in-page', (_event, url) => {
       tab.info.url = url;
-      tab.info.canGoBack = wc.canGoBack();
-      tab.info.canGoForward = wc.canGoForward();
+      const anyWc = wc as any;
+      tab.info.canGoBack = anyWc.navigationHistory ? anyWc.navigationHistory.canGoBack() : wc.canGoBack();
+      tab.info.canGoForward = anyWc.navigationHistory ? anyWc.navigationHistory.canGoForward() : wc.canGoForward();
       this.broadcastTabs();
       if (this.activeTabId === tab.id) {
         this.broadcastActiveTab();
@@ -348,6 +368,7 @@ export class TabManager {
     });
 
     wc.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+      console.log('[TabManager did-fail-load]:', { errorCode, errorDescription, validatedURL });
       // errorCode -3 is ABORTED (e.g. redirected or stopped), ignore it
       if (errorCode === -3) return;
 

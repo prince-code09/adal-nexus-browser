@@ -11,6 +11,7 @@ export const IPC_CHANNELS = {
   TAB_SWITCH: 'tab:switch',
   TAB_CLOSE: 'tab:close',
   TAB_GET_ALL: 'tab:get-all',
+  TAB_GET_ACTIVE: 'tab:get-active',
   TAB_SET_BOUNDS: 'tab:set-bounds',
 
   // Navigation

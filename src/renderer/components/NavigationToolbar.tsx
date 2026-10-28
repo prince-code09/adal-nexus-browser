@@ -75,7 +75,10 @@ export const NavigationToolbar: React.FC<NavigationToolbarProps> = ({
     if (e.key === 'Enter') {
       e.currentTarget.blur();
       setIsEditing(false);
-      onNavigate(inputVal);
+      const trimmed = inputVal.trim();
+      if (trimmed) {
+        onNavigate(trimmed);
+      }
     } else if (e.key === 'Escape') {
       setIsEditing(false);
       if (activeTab && !activeTab.isNewTab) {

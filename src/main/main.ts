@@ -74,12 +74,13 @@ function createWindow(): void {
     return { action: 'deny' };
   });
 
+  // Initialize default New Tab immediately
+  if (tabManager && tabManager.getTabs().length === 0) {
+    tabManager.createTab('adal://newtab', true);
+  }
+
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show();
-    // Initialize default New Tab if no tabs exist
-    if (tabManager && tabManager.getTabs().length === 0) {
-      tabManager.createTab('adal://newtab', true);
-    }
   });
 
   mainWindow.on('resize', () => {
@@ -133,13 +134,20 @@ function registerIpcHandlers(): void {
     return tabManager.getTabs();
   });
 
+  ipcMain.handle(IPC_CHANNELS.TAB_GET_ACTIVE, () => {
+    return tabManager.getActiveTab();
+  });
+
   ipcMain.handle(IPC_CHANNELS.TAB_SET_BOUNDS, (_event, bounds: BrowserBounds) => {
     tabManager.setBounds(bounds);
   });
 
   // --- Navigation Controls ---
   ipcMain.handle(IPC_CHANNELS.NAV_NAVIGATE, (_event, tabId: string, urlOrQuery: string) => {
-    return tabManager.navigate(tabId, urlOrQuery);
+    console.log('[Main IPC] NAV_NAVIGATE received:', { tabId, urlOrQuery });
+    const result = tabManager.navigate(tabId, urlOrQuery);
+    console.log('[Main IPC] NAV_NAVIGATE result:', result);
+    return result;
   });
 
   ipcMain.handle(IPC_CHANNELS.NAV_GO_BACK, (_event, tabId: string) => {

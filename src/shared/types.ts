@@ -186,6 +186,7 @@ export interface AdaLNexusAPI {
   switchTab: (tabId: string) => Promise<boolean>;
   closeTab: (tabId: string) => Promise<boolean>;
   getTabs: () => Promise<BrowserTab[]>;
+  getActiveTab: () => Promise<BrowserTab | null>;
   setBounds: (bounds: BrowserBounds) => Promise<void>;
 
   // Navigation

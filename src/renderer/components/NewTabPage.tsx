@@ -53,31 +53,101 @@ export const NewTabPage: React.FC<NewTabPageProps> = ({
     return () => clearInterval(interval);
   }, []);
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (query.trim()) {
-      onNavigate(query.trim());
+  const submitSearch = () => {
+    const trimmed = query.trim();
+    if (trimmed) {
+      onNavigate(trimmed);
     }
   };
 
-  return (
-    <div className="relative w-full h-full flex flex-col justify-between overflow-y-auto no-scrollbar select-none">
-      {/* Atmospheric Background Layer */}
-      <div
-        className="absolute inset-0 bg-cover bg-center -z-10"
-        style={{
-          backgroundImage: `linear-gradient(to bottom, rgba(9, 11, 20, 0.4), rgba(9, 11, 20, 0.75)), url('/reference-design.jpg')`,
-          filter: 'contrast(1.05) saturate(1.1)',
-        }}
-      />
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    submitSearch();
+  };
 
-      {/* Top Header Bar: Time & Customize */}
-      <div className="w-full flex justify-end items-center p-6 z-10 gap-4">
+  return (
+    <div className="relative w-full h-full flex flex-col justify-between overflow-y-auto no-scrollbar select-none bg-[#080b14]">
+      {/* =========================================================================
+          CINEMATIC 3D ATMOSPHERIC BACKGROUND LAYERS
+          ========================================================================= */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none -z-10">
+        {/* Layer 1: Deep Cosmic Gradient Base */}
+        <div className="absolute inset-0 bg-gradient-to-b from-[#090b16] via-[#0d1024] to-[#080b14]" />
+
+        {/* Layer 2: Distant Twinkling Stars */}
+        <div className="absolute inset-0 opacity-80">
+          <div className="absolute top-[12%] left-[18%] w-1 h-1 bg-white rounded-full animate-twinkle-1" />
+          <div className="absolute top-[22%] left-[32%] w-1.5 h-1.5 bg-violet-300 rounded-full animate-twinkle-2 shadow-[0_0_8px_#c084fc]" />
+          <div className="absolute top-[15%] left-[65%] w-1 h-1 bg-blue-200 rounded-full animate-twinkle-3" />
+          <div className="absolute top-[28%] left-[78%] w-1 h-1 bg-fuchsia-200 rounded-full animate-twinkle-1" />
+          <div className="absolute top-[8%] left-[82%] w-1.5 h-1.5 bg-white rounded-full animate-twinkle-2 shadow-[0_0_6px_#fff]" />
+          <div className="absolute top-[35%] left-[12%] w-1 h-1 bg-purple-300 rounded-full animate-twinkle-3" />
+          <div className="absolute top-[18%] left-[48%] w-0.5 h-0.5 bg-white rounded-full animate-twinkle-1" />
+          <div className="absolute top-[40%] left-[88%] w-1 h-1 bg-cyan-200 rounded-full animate-twinkle-2" />
+        </div>
+
+        {/* Layer 3: Giant Cosmic Ringed Moon / Planet (Top-Right) */}
+        <div className="absolute -top-12 -right-16 w-96 h-96 rounded-full bg-gradient-to-tr from-indigo-950 via-purple-900/60 to-violet-600/30 border border-violet-500/20 shadow-[0_0_90px_rgba(139,92,246,0.35)] opacity-85 animate-celestial">
+          {/* Internal shadow craters & depth */}
+          <div className="absolute inset-4 rounded-full bg-gradient-to-br from-black/60 via-purple-950/40 to-transparent backdrop-blur-sm" />
+          {/* Thin planetary ring line */}
+          <div className="absolute top-1/2 left-[-20%] w-[140%] h-[2px] bg-gradient-to-r from-transparent via-violet-400/40 to-transparent -rotate-12 blur-[0.5px]" />
+        </div>
+
+        {/* Floating Secondary Purple Celestial Orb */}
+        <div className="absolute top-[38%] right-[12%] w-12 h-12 rounded-full bg-gradient-to-tr from-purple-700 to-fuchsia-500 shadow-[0_0_30px_rgba(192,132,252,0.7)] animate-orb-glow animate-celestial-slow opacity-90" />
+
+        {/* Layer 4: Distant Mountain Silhouettes & Atmospheric Fog */}
+        <div className="absolute bottom-[28%] left-0 right-0 h-72 opacity-40">
+          <svg
+            className="w-full h-full object-cover"
+            viewBox="0 0 1440 320"
+            preserveAspectRatio="none"
+          >
+            <path
+              fill="#0f172a"
+              d="M0,192L48,176C96,160,192,128,288,144C384,160,480,224,576,218.7C672,213,768,139,864,122.7C960,107,1056,149,1152,176C1248,203,1344,213,1392,218.7L1440,224L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"
+            />
+          </svg>
+        </div>
+
+        {/* Closer Jagged Violet Mountains with Rim Lighting */}
+        <div className="absolute bottom-[20%] left-0 right-0 h-64 opacity-75">
+          <svg
+            className="w-full h-full object-cover"
+            viewBox="0 0 1440 320"
+            preserveAspectRatio="none"
+          >
+            <path
+              fill="#080c18"
+              stroke="#8b5cf6"
+              strokeWidth="1.5"
+              strokeOpacity="0.4"
+              d="M0,224L60,192C120,160,240,96,360,117.3C480,139,600,245,720,250.7C840,256,960,160,1080,138.7C1200,117,1320,171,1380,197.3L1440,224L1440,320L0,320Z"
+            />
+          </svg>
+        </div>
+
+        {/* Layer 5: Glowing Neon Lake Horizon Waves */}
+        <div className="absolute bottom-[16%] left-0 right-0 h-16 bg-gradient-to-t from-violet-950/60 via-purple-900/30 to-transparent animate-neon-water blur-md" />
+        <div className="absolute bottom-[15%] left-[10%] right-[10%] h-[2px] bg-gradient-to-r from-transparent via-violet-400 to-transparent opacity-80 blur-[1px] shadow-[0_0_20px_#a855f7]" />
+
+        {/* 3D Floating Glass Bubble Sphere (Bottom-Left) */}
+        <div className="absolute bottom-16 -left-8 w-44 h-44 rounded-full bg-gradient-to-tr from-purple-900/40 via-violet-600/20 to-white/20 border border-white/20 backdrop-blur-md shadow-[0_0_40px_rgba(139,92,246,0.3)] animate-celestial" />
+
+        {/* 3D Floating Glass Bubble Sphere (Bottom-Right) */}
+        <div className="absolute bottom-20 -right-10 w-52 h-52 rounded-full bg-gradient-to-tl from-purple-900/40 via-fuchsia-600/20 to-white/20 border border-white/20 backdrop-blur-md shadow-[0_0_50px_rgba(168,85,247,0.3)] animate-celestial-slow" />
+      </div>
+
+      {/* =========================================================================
+          TOP HEADER: Live Time, Greeting & Customize Button
+          ========================================================================= */}
+      <div className="w-full flex justify-end items-center px-8 pt-6 z-10 gap-4">
         <div className="text-right">
-          <div className="text-2xl font-bold tracking-tight text-white drop-shadow-md">
+          <div className="text-2xl font-bold tracking-tight text-white drop-shadow-[0_2px_10px_rgba(0,0,0,0.8)] font-sans">
             {timeStr || '10:24 AM'}
           </div>
-          <div className="text-xs text-slate-300 font-medium drop-shadow">
+          <div className="text-xs text-violet-300/90 font-medium drop-shadow">
             {greeting}
           </div>
         </div>
@@ -85,28 +155,33 @@ export const NewTabPage: React.FC<NewTabPageProps> = ({
         <button
           type="button"
           onClick={onCustomizeClick}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/[0.08] hover:bg-violet-600/30 text-xs text-slate-200 hover:text-white border border-white/15 hover:border-violet-500/40 backdrop-blur-md transition-all shadow-lg"
+          className="group flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-white/[0.06] hover:bg-violet-600/30 text-xs text-slate-200 hover:text-white border border-white/15 hover:border-violet-500/50 backdrop-blur-xl transition-all duration-200 shadow-lg shadow-black/40 hover:shadow-violet-500/20 hover:-translate-y-0.5 active:translate-y-0"
         >
-          <Edit2 className="w-3.5 h-3.5 text-violet-400" />
-          <span>Customize</span>
+          <Edit2 className="w-3.5 h-3.5 text-violet-400 group-hover:rotate-12 transition-transform duration-200" />
+          <span className="font-medium">Customize</span>
         </button>
       </div>
 
-      {/* Main Content: Brand, Search, Shortcuts */}
-      <div className="w-full max-w-3xl mx-auto flex flex-col items-center px-4 -mt-6 z-10">
-        {/* Title & Tagline */}
-        <div className="text-center mb-8">
-          <h1 className="text-5xl font-black tracking-tight text-white drop-shadow-[0_4px_16px_rgba(0,0,0,0.8)]">
-            AdaL <span className="text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-fuchsia-400 drop-shadow-[0_0_25px_rgba(168,85,247,0.6)]">Nexus</span>
+      {/* =========================================================================
+          CENTER COMPOSITION: Branding, Search Bar & Website Shortcuts
+          ========================================================================= */}
+      <div className="w-full max-w-3xl mx-auto flex flex-col items-center px-6 -mt-4 z-10">
+        {/* Brand Title & Tagline */}
+        <div className="text-center mb-7">
+          <h1 className="text-5xl font-black tracking-tight text-white drop-shadow-[0_4px_20px_rgba(0,0,0,0.9)] font-sans">
+            AdaL{' '}
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-violet-400 via-purple-300 to-fuchsia-400 drop-shadow-[0_0_35px_rgba(168,85,247,0.7)]">
+              Nexus
+            </span>
           </h1>
           <p className="mt-2 text-sm text-slate-300 font-medium tracking-wide drop-shadow-md">
             Your Intelligent Browser for a Smarter Web
           </p>
         </div>
 
-        {/* Center Search Input */}
-        <form onSubmit={handleSearch} className="w-full max-w-2xl mb-8">
-          <div className="relative flex items-center h-12 bg-black/40 hover:bg-black/50 focus-within:bg-black/60 border border-violet-500/40 focus-within:border-violet-400 rounded-full px-4 shadow-[0_0_25px_rgba(139,92,246,0.25)] focus-within:shadow-[0_0_35px_rgba(139,92,246,0.45)] backdrop-blur-xl transition-all duration-300">
+        {/* Prominent Centered Search Bar */}
+        <form onSubmit={handleSearchSubmit} className="w-full max-w-2xl mb-8">
+          <div className="group relative flex items-center h-13 bg-black/45 hover:bg-black/55 focus-within:bg-black/65 border border-violet-500/40 hover:border-violet-400/70 focus-within:border-violet-400 rounded-full px-4 shadow-[0_0_25px_rgba(139,92,246,0.25)] hover:shadow-[0_0_35px_rgba(139,92,246,0.35)] focus-within:shadow-[0_0_45px_rgba(139,92,246,0.5)] backdrop-blur-2xl transition-all duration-300">
             {/* Google Icon */}
             <div className="w-5 h-5 mr-3 shrink-0">
               <svg className="w-5 h-5" viewBox="0 0 24 24">
@@ -129,17 +204,29 @@ export const NewTabPage: React.FC<NewTabPageProps> = ({
               </svg>
             </div>
 
+            {/* Input field */}
             <input
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  submitSearch();
+                }
+              }}
               placeholder="Search Google or type a URL"
               className="flex-1 bg-transparent border-none outline-none text-sm text-white placeholder-slate-400 font-sans tracking-wide"
             />
 
+            {/* Search Button with 3D press effect */}
             <button
               type="submit"
-              className="w-8 h-8 rounded-full bg-gradient-to-tr from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 flex items-center justify-center text-white shadow-md shadow-violet-500/40 transition-transform hover:scale-105 active:scale-95 ml-2"
+              onClick={(e) => {
+                e.preventDefault();
+                submitSearch();
+              }}
+              className="w-9 h-9 rounded-full bg-gradient-to-tr from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 active:scale-95 flex items-center justify-center text-white shadow-md shadow-violet-500/50 hover:shadow-violet-500/70 transition-all duration-200 ml-2 cursor-pointer"
               title="Search"
             >
               <Search className="w-4 h-4" />
@@ -147,17 +234,17 @@ export const NewTabPage: React.FC<NewTabPageProps> = ({
           </div>
         </form>
 
-        {/* Speed Dial Shortcuts */}
-        <div className="flex flex-wrap items-center justify-center gap-5 max-w-2xl">
+        {/* Speed Dial Shortcuts with 3D Hover Tilt & Glow */}
+        <div className="flex flex-wrap items-center justify-center gap-6 max-w-2xl">
           {shortcuts.map((item) => (
             <div key={item.id} className="group relative flex flex-col items-center">
               <button
                 type="button"
                 onClick={() => onNavigate(item.url)}
-                className="w-13 h-13 rounded-full bg-white/[0.07] hover:bg-white/[0.15] border border-white/20 hover:border-violet-400 flex items-center justify-center backdrop-blur-md shadow-lg shadow-black/40 transition-all duration-200 group-hover:-translate-y-1 group-hover:shadow-violet-500/20"
+                className="w-14 h-14 rounded-full bg-white/[0.08] hover:bg-white/[0.18] border border-white/20 hover:border-violet-400/80 flex items-center justify-center backdrop-blur-xl shadow-lg shadow-black/50 transition-all duration-300 group-hover:-translate-y-1.5 group-hover:scale-105 group-hover:shadow-[0_12px_25px_-5px_rgba(139,92,246,0.4)] cursor-pointer"
                 title={item.title}
               >
-                {/* Render Brand Logo or Initials */}
+                {/* Brand Logos */}
                 {item.title.toLowerCase().includes('youtube') ? (
                   <div className="w-8 h-8 rounded-full bg-red-600 flex items-center justify-center shadow-md">
                     <svg className="w-4 h-4 text-white fill-white" viewBox="0 0 24 24">
@@ -209,11 +296,10 @@ export const NewTabPage: React.FC<NewTabPageProps> = ({
                 )}
               </button>
 
-              <span className="mt-1.5 text-[11px] font-medium text-slate-200 drop-shadow max-w-[70px] truncate text-center">
+              <span className="mt-2 text-[11px] font-medium text-slate-200 drop-shadow max-w-[70px] truncate text-center">
                 {item.title}
               </span>
 
-              {/* Optional delete button on hover */}
               {onDeleteShortcut && (
                 <button
                   type="button"
@@ -221,7 +307,7 @@ export const NewTabPage: React.FC<NewTabPageProps> = ({
                     e.stopPropagation();
                     onDeleteShortcut(item.id);
                   }}
-                  className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-600/80 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                  className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-600 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-md"
                   title="Remove shortcut"
                 >
                   <Trash2 className="w-2.5 h-2.5" />
@@ -230,32 +316,34 @@ export const NewTabPage: React.FC<NewTabPageProps> = ({
             </div>
           ))}
 
-          {/* Add Shortcut Button */}
+          {/* Add Shortcut Action */}
           <div className="flex flex-col items-center">
             <button
               type="button"
               onClick={onAddShortcutClick}
-              className="w-13 h-13 rounded-full bg-white/[0.04] hover:bg-violet-600/20 border border-dashed border-white/20 hover:border-violet-400 flex items-center justify-center backdrop-blur-md transition-all duration-200 hover:-translate-y-1 hover:shadow-violet-500/20 text-slate-300 hover:text-violet-300"
+              className="w-14 h-14 rounded-full bg-white/[0.05] hover:bg-violet-600/25 border border-dashed border-white/25 hover:border-violet-400 flex items-center justify-center backdrop-blur-xl transition-all duration-300 hover:-translate-y-1.5 hover:scale-105 hover:shadow-[0_12px_25px_-5px_rgba(139,92,246,0.3)] text-slate-300 hover:text-violet-300 cursor-pointer"
               title="Add Shortcut"
             >
               <Plus className="w-5 h-5" />
             </button>
-            <span className="mt-1.5 text-[11px] font-medium text-slate-300 drop-shadow">
+            <span className="mt-2 text-[11px] font-medium text-slate-300 drop-shadow">
               Add Shortcut
             </span>
           </div>
         </div>
       </div>
 
-      {/* Bottom 4 Feature Cards */}
-      <div className="w-full max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-4 p-6 z-10">
+      {/* =========================================================================
+          BOTTOM 4 FEATURE CARDS: Glassmorphism with 3D Elevation
+          ========================================================================= */}
+      <div className="w-full max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-4 px-6 pb-6 z-10">
         {/* Card 1: Fast */}
-        <div className="flex items-start gap-3 p-4 rounded-2xl bg-white/[0.05] hover:bg-white/[0.08] border border-white/10 hover:border-violet-500/40 backdrop-blur-lg shadow-xl shadow-black/40 transition-all duration-200 hover:-translate-y-1">
-          <div className="p-2.5 rounded-xl bg-violet-600/20 text-violet-400 border border-violet-500/30">
+        <div className="group flex items-start gap-3.5 p-4 rounded-2xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 hover:border-violet-500/50 backdrop-blur-2xl shadow-xl shadow-black/50 transition-all duration-300 hover:-translate-y-1.5 hover:shadow-[0_15px_30px_-5px_rgba(139,92,246,0.3)]">
+          <div className="p-2.5 rounded-xl bg-violet-600/20 text-violet-400 border border-violet-500/30 group-hover:scale-110 transition-transform duration-200">
             <Zap className="w-4 h-4" />
           </div>
           <div>
-            <div className="text-sm font-semibold text-white">Fast</div>
+            <div className="text-sm font-semibold text-white tracking-tight">Fast</div>
             <div className="text-xs text-slate-400 mt-0.5 leading-snug">
               Built for speed and productivity
             </div>
@@ -263,12 +351,12 @@ export const NewTabPage: React.FC<NewTabPageProps> = ({
         </div>
 
         {/* Card 2: Secure */}
-        <div className="flex items-start gap-3 p-4 rounded-2xl bg-white/[0.05] hover:bg-white/[0.08] border border-white/10 hover:border-teal-500/40 backdrop-blur-lg shadow-xl shadow-black/40 transition-all duration-200 hover:-translate-y-1">
-          <div className="p-2.5 rounded-xl bg-teal-600/20 text-teal-400 border border-teal-500/30">
+        <div className="group flex items-start gap-3.5 p-4 rounded-2xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 hover:border-teal-500/50 backdrop-blur-2xl shadow-xl shadow-black/50 transition-all duration-300 hover:-translate-y-1.5 hover:shadow-[0_15px_30px_-5px_rgba(20,184,166,0.3)]">
+          <div className="p-2.5 rounded-xl bg-teal-600/20 text-teal-400 border border-teal-500/30 group-hover:scale-110 transition-transform duration-200">
             <ShieldCheck className="w-4 h-4" />
           </div>
           <div>
-            <div className="text-sm font-semibold text-white">Secure</div>
+            <div className="text-sm font-semibold text-white tracking-tight">Secure</div>
             <div className="text-xs text-slate-400 mt-0.5 leading-snug">
               Your data stays in your control
             </div>
@@ -276,12 +364,12 @@ export const NewTabPage: React.FC<NewTabPageProps> = ({
         </div>
 
         {/* Card 3: Smart */}
-        <div className="flex items-start gap-3 p-4 rounded-2xl bg-white/[0.05] hover:bg-white/[0.08] border border-white/10 hover:border-fuchsia-500/40 backdrop-blur-lg shadow-xl shadow-black/40 transition-all duration-200 hover:-translate-y-1">
-          <div className="p-2.5 rounded-xl bg-fuchsia-600/20 text-fuchsia-400 border border-fuchsia-500/30">
+        <div className="group flex items-start gap-3.5 p-4 rounded-2xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 hover:border-fuchsia-500/50 backdrop-blur-2xl shadow-xl shadow-black/50 transition-all duration-300 hover:-translate-y-1.5 hover:shadow-[0_15px_30px_-5px_rgba(217,70,239,0.3)]">
+          <div className="p-2.5 rounded-xl bg-fuchsia-600/20 text-fuchsia-400 border border-fuchsia-500/30 group-hover:scale-110 transition-transform duration-200">
             <Sparkles className="w-4 h-4" />
           </div>
           <div>
-            <div className="text-sm font-semibold text-white">Smart</div>
+            <div className="text-sm font-semibold text-white tracking-tight">Smart</div>
             <div className="text-xs text-slate-400 mt-0.5 leading-snug">
               AI-powered browsing experience
             </div>
@@ -289,12 +377,12 @@ export const NewTabPage: React.FC<NewTabPageProps> = ({
         </div>
 
         {/* Card 4: Customizable */}
-        <div className="flex items-start gap-3 p-4 rounded-2xl bg-white/[0.05] hover:bg-white/[0.08] border border-white/10 hover:border-indigo-500/40 backdrop-blur-lg shadow-xl shadow-black/40 transition-all duration-200 hover:-translate-y-1">
-          <div className="p-2.5 rounded-xl bg-indigo-600/20 text-indigo-400 border border-indigo-500/30">
+        <div className="group flex items-start gap-3.5 p-4 rounded-2xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 hover:border-indigo-500/50 backdrop-blur-2xl shadow-xl shadow-black/50 transition-all duration-300 hover:-translate-y-1.5 hover:shadow-[0_15px_30px_-5px_rgba(99,102,241,0.3)]">
+          <div className="p-2.5 rounded-xl bg-indigo-600/20 text-indigo-400 border border-indigo-500/30 group-hover:scale-110 transition-transform duration-200">
             <LayoutGrid className="w-4 h-4" />
           </div>
           <div>
-            <div className="text-sm font-semibold text-white">Customizable</div>
+            <div className="text-sm font-semibold text-white tracking-tight">Customizable</div>
             <div className="text-xs text-slate-400 mt-0.5 leading-snug">
               Make it yours with themes and shortcuts
             </div>

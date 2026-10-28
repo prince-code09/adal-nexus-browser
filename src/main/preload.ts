@@ -33,6 +33,7 @@ const adalNexus: AdaLNexusAPI = {
   switchTab: (tabId: string) => ipcRenderer.invoke(IPC_CHANNELS.TAB_SWITCH, tabId),
   closeTab: (tabId: string) => ipcRenderer.invoke(IPC_CHANNELS.TAB_CLOSE, tabId),
   getTabs: () => ipcRenderer.invoke(IPC_CHANNELS.TAB_GET_ALL),
+  getActiveTab: () => ipcRenderer.invoke(IPC_CHANNELS.TAB_GET_ACTIVE),
   setBounds: (bounds: BrowserBounds) => ipcRenderer.invoke(IPC_CHANNELS.TAB_SET_BOUNDS, bounds),
 
   // Navigation
