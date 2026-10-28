@@ -108,9 +108,11 @@ export class TabManager {
     const target = this.tabs.find((t) => t.id === tabId);
     if (!target) return false;
 
-    const prevActive = this.tabs.find((t) => t.id === this.activeTabId);
-    if (prevActive && prevActive.id !== tabId) {
-      prevActive.view.setVisible(false);
+    // Ensure all other tabs' views are hidden
+    for (const t of this.tabs) {
+      if (t.id !== tabId) {
+        t.view.setVisible(false);
+      }
     }
 
     this.activeTabId = tabId;
@@ -120,7 +122,9 @@ export class TabManager {
       target.view.setVisible(false);
     } else {
       if (win && !win.isDestroyed()) {
-        win.contentView.addChildView(target.view);
+        try {
+          win.contentView.addChildView(target.view);
+        } catch {}
       }
       target.view.setBounds({
         x: Math.round(this.bounds.x),
@@ -196,11 +200,19 @@ export class TabManager {
     tab.info.title = resolved;
     tab.info.isLoading = true;
 
-    // Switch active tab to this tab and show view
+    // Switch active tab to this tab and ensure all other views are hidden
     this.activeTabId = tabId;
+    for (const t of this.tabs) {
+      if (t.id !== tabId) {
+        t.view.setVisible(false);
+      }
+    }
+
     const win = this.getMainWindow();
     if (win && !win.isDestroyed()) {
-      win.contentView.addChildView(tab.view);
+      try {
+        win.contentView.addChildView(tab.view);
+      } catch {}
     }
     tab.view.setBounds({
       x: Math.round(this.bounds.x),

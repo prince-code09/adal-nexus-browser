@@ -135,4 +135,57 @@ describe('AdaL Nexus Search & Navigation Verification', () => {
     const activeTabAfterForward = await page.evaluate(() => window.adalNexus?.getActiveTab());
     expect(activeTabAfterForward).toBeDefined();
   });
+
+  it('Case 6: Navigates directly to exact Google Search URL "https://www.google.com/search?q=mario+game"', async () => {
+    const topOmnibox = page.locator('input[placeholder*="Search Google or type a URL"]').first();
+    const exactUrl = 'https://www.google.com/search?q=mario+game';
+    await topOmnibox.fill(exactUrl);
+    await topOmnibox.press('Enter');
+
+    await page.waitForFunction(async () => {
+      const active = await window.adalNexus?.getActiveTab();
+      return active && active.url === 'https://www.google.com/search?q=mario+game';
+    }, { timeout: 15000 });
+
+    const activeTab = await page.evaluate(() => window.adalNexus?.getActiveTab());
+    expect(activeTab?.url).toBe(exactUrl);
+    expect(activeTab?.isNewTab).toBe(false);
+  });
+
+  it('Case 7: Creates a new tab via "+" button and confirms search field starts blank', async () => {
+    // Click the "+" button in the titlebar
+    const plusBtn = page.locator('button[title*="New tab"]').first();
+    await plusBtn.click();
+
+    await page.waitForTimeout(600);
+
+    const activeTab = await page.evaluate(() => window.adalNexus?.getActiveTab());
+    expect(activeTab?.isNewTab).toBe(true);
+
+    // Verify center search input on the newly created tab is empty
+    const inputs = page.locator('input[placeholder*="Search Google or type a URL"]');
+    const centerInput = inputs.nth(1);
+    const val = await centerInput.inputValue();
+    expect(val).toBe('');
+  });
+
+  it('Case 8: Toggles theme between Dark and Clean Light mode and verifies root class', async () => {
+    // Check initial dark theme
+    const isDarkInitial = await page.evaluate(() => document.documentElement.classList.contains('dark'));
+    expect(isDarkInitial).toBe(true);
+
+    // Switch to light theme via API
+    await page.evaluate(() => window.adalNexus?.saveBrowserSettings({ theme: 'light' }));
+    await page.waitForTimeout(400);
+
+    const isLightNow = await page.evaluate(() => document.documentElement.classList.contains('light'));
+    expect(isLightNow).toBe(true);
+
+    // Switch back to dark theme
+    await page.evaluate(() => window.adalNexus?.saveBrowserSettings({ theme: 'dark' }));
+    await page.waitForTimeout(400);
+
+    const isDarkAgain = await page.evaluate(() => document.documentElement.classList.contains('dark'));
+    expect(isDarkAgain).toBe(true);
+  });
 });

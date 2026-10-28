@@ -9,6 +9,7 @@ interface DownloadsModalProps {
   onOpenFile: (id: string) => void;
   onShowInFolder: (id: string) => void;
   onCancelDownload: (id: string) => void;
+  theme?: 'dark' | 'light';
 }
 
 export const DownloadsModal: React.FC<DownloadsModalProps> = ({
@@ -18,8 +19,10 @@ export const DownloadsModal: React.FC<DownloadsModalProps> = ({
   onOpenFile,
   onShowInFolder,
   onCancelDownload,
+  theme = 'dark',
 }) => {
   if (!isOpen) return null;
+  const isLight = theme === 'light';
 
   const formatBytes = (bytes: number) => {
     if (bytes === 0) return '0 B';
@@ -31,20 +34,32 @@ export const DownloadsModal: React.FC<DownloadsModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="w-full max-w-xl bg-[#0f1424] border border-violet-500/30 rounded-2xl shadow-2xl shadow-violet-950/50 flex flex-col max-h-[80vh] overflow-hidden">
+      <div
+        className={`w-full max-w-xl rounded-2xl shadow-2xl flex flex-col max-h-[80vh] overflow-hidden border transition-all ${
+          isLight
+            ? 'bg-white border-slate-200 text-slate-800 shadow-slate-400/20'
+            : 'bg-[#0f1424] border-violet-500/30 text-white shadow-violet-950/50'
+        }`}
+      >
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-white/10">
-          <div className="flex items-center gap-2 text-white font-semibold text-base">
-            <Download className="w-5 h-5 text-violet-400" />
+        <div
+          className={`flex items-center justify-between p-4 border-b ${
+            isLight ? 'border-slate-200 bg-slate-50' : 'border-white/10 bg-white/[0.02]'
+          }`}
+        >
+          <div className="flex items-center gap-2 font-semibold text-base">
+            <Download className="w-5 h-5 text-violet-500" />
             <span>Downloads</span>
-            <span className="text-xs text-slate-400 font-normal ml-2">
+            <span className={`text-xs font-normal ml-2 ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
               ({downloads.length})
             </span>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
+            className={`p-1 rounded-lg transition-colors cursor-pointer ${
+              isLight ? 'text-slate-400 hover:text-slate-700 hover:bg-slate-200' : 'text-slate-400 hover:text-white hover:bg-white/10'
+            }`}
           >
             <X className="w-5 h-5" />
           </button>
@@ -53,92 +68,123 @@ export const DownloadsModal: React.FC<DownloadsModalProps> = ({
         {/* List */}
         <div className="flex-1 overflow-y-auto p-4 space-y-3 no-scrollbar">
           {downloads.length === 0 ? (
-            <div className="text-center py-12 text-slate-500 text-xs">
+            <div className={`text-center py-12 text-xs ${isLight ? 'text-slate-400' : 'text-slate-500'}`}>
               No recent downloads
             </div>
           ) : (
             downloads.map((item) => {
-              const isDone = item.state === 'completed';
-              const isProgressing = item.state === 'progressing';
-              const isFailed = item.state === 'interrupted';
-              const isCancelled = item.state === 'cancelled';
+              const progressPct =
+                item.totalBytes > 0
+                  ? Math.round((item.receivedBytes / item.totalBytes) * 100)
+                  : 0;
 
               return (
                 <div
                   key={item.id}
-                  className="p-3 rounded-xl bg-white/[0.03] border border-white/5 flex flex-col gap-2"
+                  className={`p-3 rounded-xl border flex flex-col gap-2 ${
+                    isLight ? 'bg-slate-50 border-slate-200' : 'bg-white/[0.03] border-white/5'
+                  }`}
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-3 overflow-hidden">
-                      <div className="w-8 h-8 rounded-lg bg-violet-950/50 border border-violet-500/20 flex items-center justify-center shrink-0">
-                        {isDone ? (
-                          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                        ) : isProgressing ? (
-                          <Download className="w-4 h-4 text-violet-400 animate-bounce" />
-                        ) : (
-                          <AlertCircle className="w-4 h-4 text-red-400" />
-                        )}
-                      </div>
-                      <div className="overflow-hidden">
-                        <div className="text-xs font-medium text-white truncate">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5 overflow-hidden">
+                      {item.state === 'completed' ? (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                      ) : item.state === 'cancelled' || item.state === 'interrupted' ? (
+                        <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+                      ) : (
+                        <div className="w-4 h-4 border-2 border-violet-500 border-t-transparent rounded-full animate-spin shrink-0" />
+                      )}
+                      <div className="flex items-center gap-2 truncate">
+                        <span className={`text-xs font-medium truncate ${isLight ? 'text-slate-900' : 'text-white'}`}>
                           {item.filename}
-                        </div>
-                        <div className="text-[11px] text-slate-400 truncate mt-0.5">
-                          {formatBytes(item.receivedBytes)}{' '}
-                          {item.totalBytes > 0 && `/ ${formatBytes(item.totalBytes)}`}
-                          {item.speed && item.speed > 0 ? ` • ${formatBytes(item.speed)}/s` : ''}
-                        </div>
+                        </span>
+                        {item.isDangerous && (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] bg-amber-500/20 text-amber-500 border border-amber-500/30 font-semibold shrink-0">
+                            Executable
+                          </span>
+                        )}
+                        {item.fileMissing && (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] bg-red-500/20 text-red-400 border border-red-500/30 font-semibold shrink-0">
+                            Missing
+                          </span>
+                        )}
                       </div>
                     </div>
 
-                    {/* Actions */}
-                    <div className="flex items-center gap-1 shrink-0">
-                      {isDone && (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => onOpenFile(item.id)}
-                            className="px-2 py-1 text-[11px] bg-violet-600/30 hover:bg-violet-600/50 text-violet-200 border border-violet-500/30 rounded-md transition-colors"
-                          >
-                            Open
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => onShowInFolder(item.id)}
-                            className="p-1 text-slate-400 hover:text-white hover:bg-white/10 rounded-md transition-colors"
-                            title="Show in folder"
-                          >
-                            <Folder className="w-3.5 h-3.5" />
-                          </button>
-                        </>
-                      )}
-                      {isProgressing && (
+                    <div className="flex items-center gap-2 shrink-0">
+                      {item.state === 'progressing' && (
                         <button
                           type="button"
                           onClick={() => onCancelDownload(item.id)}
-                          className="p-1 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-md transition-colors"
+                          className="p-1 rounded-md text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
                           title="Cancel download"
                         >
                           <Ban className="w-3.5 h-3.5" />
                         </button>
                       )}
-                      {isCancelled && (
-                        <span className="text-[10px] text-slate-500">Cancelled</span>
-                      )}
-                      {isFailed && (
-                        <span className="text-[10px] text-red-400">Failed</span>
+                      {item.state === 'completed' && (
+                        <>
+                          {!item.fileMissing && (
+                            <button
+                              type="button"
+                              onClick={() => onShowInFolder(item.id)}
+                              className={`p-1 rounded-md transition-colors cursor-pointer ${
+                                isLight ? 'text-slate-500 hover:text-slate-800 hover:bg-slate-200' : 'text-slate-400 hover:text-white hover:bg-white/10'
+                              }`}
+                              title="Show in folder"
+                            >
+                              <Folder className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          {!item.fileMissing ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (item.isDangerous) {
+                                  if (!window.confirm(`Warning: "${item.filename}" is an executable or script file. Are you sure you want to open it?`)) {
+                                    return;
+                                  }
+                                }
+                                onOpenFile(item.id);
+                              }}
+                              className="text-xs text-violet-500 hover:underline font-medium cursor-pointer"
+                            >
+                              Open
+                            </button>
+                          ) : (
+                            <span className="text-[11px] text-slate-400 italic">Deleted</span>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
 
-                  {/* Progress bar if downloading */}
-                  {isProgressing && (
-                    <div className="w-full bg-white/10 rounded-full h-1.5 overflow-hidden">
-                      <div
-                        className="bg-gradient-to-r from-violet-500 to-fuchsia-500 h-full rounded-full transition-all duration-200"
-                        style={{ width: `${item.percent || 0}%` }}
-                      />
+                  {item.state === 'progressing' && (
+                    <div className="space-y-1">
+                      <div className="h-1.5 w-full bg-slate-200 dark:bg-white/10 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-gradient-to-r from-violet-500 to-fuchsia-500 rounded-full transition-all duration-200"
+                          style={{ width: `${progressPct}%` }}
+                        />
+                      </div>
+                      <div className="flex justify-between text-[10px] text-slate-400">
+                        <span>
+                          {formatBytes(item.receivedBytes)} of{' '}
+                          {item.totalBytes > 0 ? formatBytes(item.totalBytes) : 'Unknown'}
+                        </span>
+                        <span>{progressPct}%</span>
+                      </div>
                     </div>
+                  )}
+
+                  {item.state === 'completed' && (
+                    <div className="text-[10px] text-slate-400">
+                      {formatBytes(item.totalBytes)} • Completed
+                    </div>
+                  )}
+
+                  {item.state === 'cancelled' && (
+                    <div className="text-[10px] text-red-400">Cancelled</div>
                   )}
                 </div>
               );

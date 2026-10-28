@@ -45,6 +45,17 @@ export const App: React.FC = () => {
   const [isAddShortcutOpen, setIsAddShortcutOpen] = useState(false);
   const [isAgentModalOpen, setIsAgentModalOpen] = useState(false);
 
+  // Sync theme with document.documentElement for Tailwind dark class
+  useEffect(() => {
+    if (settings.theme === 'light') {
+      document.documentElement.classList.remove('dark');
+      document.documentElement.classList.add('light');
+    } else {
+      document.documentElement.classList.remove('light');
+      document.documentElement.classList.add('dark');
+    }
+  }, [settings.theme]);
+
   // Workspace bounds measuring
   const workspaceRef = useRef<HTMLDivElement>(null);
 
@@ -87,7 +98,9 @@ export const App: React.FC = () => {
     api.getDownloads().then(setDownloads);
 
     // Load settings
-    api.getBrowserSettings().then(setSettings);
+    api.getBrowserSettings().then((s) => {
+      if (s) setSettings(s);
+    });
 
     // Subscribe to updates
     const unsubTabs = api.onTabsUpdated((updatedTabs) => {
@@ -327,7 +340,14 @@ export const App: React.FC = () => {
 
   // Settings Actions
   const handleSaveSettings = (newSettings: Partial<BrowserSettings>) => {
+    setSettings((prev) => ({ ...prev, ...newSettings }));
     api?.saveBrowserSettings(newSettings);
+  };
+
+  // Quick toggle theme handler
+  const handleToggleTheme = () => {
+    const nextTheme = settings.theme === 'light' ? 'dark' : 'light';
+    handleSaveSettings({ theme: nextTheme });
   };
 
   // Shortcuts Actions
@@ -366,7 +386,11 @@ export const App: React.FC = () => {
   const activeDownloadsCount = downloads.filter((d) => d.state === 'progressing').length;
 
   return (
-    <div className={`h-screen w-screen flex flex-col overflow-hidden select-none ${settings.theme === 'light' ? 'light' : 'dark'}`}>
+    <div
+      className={`h-screen w-screen flex flex-col overflow-hidden select-none transition-colors duration-150 ${
+        settings.theme === 'light' ? 'light bg-slate-100 text-slate-800' : 'dark bg-[#090b14] text-slate-100'
+      }`}
+    >
       {/* 1. Custom Title Bar with Chrome Tabs & Windows Controls */}
       <TitleBar
         tabs={tabs}
@@ -374,9 +398,10 @@ export const App: React.FC = () => {
         onSelectTab={handleSelectTab}
         onCloseTab={handleCloseTab}
         onNewTab={handleNewTab}
+        theme={settings.theme}
       />
 
-      {/* 2. Navigation Toolbar with Back, Forward, Reload, Address Bar, Bookmarks, Downloads, AI badge */}
+      {/* 2. Navigation Toolbar with Back, Forward, Reload, Address Bar, Bookmarks, Downloads, Theme Toggle, AI badge */}
       <NavigationToolbar
         activeTab={activeTab}
         isBookmarked={isCurrentPageBookmarked}
@@ -391,6 +416,8 @@ export const App: React.FC = () => {
         onToggleDownloads={() => setIsDownloadsOpen((prev) => !prev)}
         onOpenAgentModal={() => setIsAgentModalOpen(true)}
         onOpenSettings={() => setIsSettingsOpen(true)}
+        theme={settings.theme}
+        onToggleTheme={handleToggleTheme}
       />
 
       {/* 3. Main Body: Sidebar + Browser Workspace */}
@@ -400,25 +427,67 @@ export const App: React.FC = () => {
           activeTab={sidebarTab}
           onSelectTab={handleSidebarSelect}
           onOpenAgentModal={() => setIsAgentModalOpen(true)}
+          theme={settings.theme}
         />
 
         {/* Main Browser Workspace */}
         <main
           ref={workspaceRef}
-          className="flex-1 h-full relative overflow-hidden bg-[#090b14]"
+          className={`flex-1 h-full relative overflow-hidden transition-colors duration-150 ${
+            settings.theme === 'light' ? 'bg-slate-100' : 'bg-[#090b14]'
+          }`}
         >
-          {/* If the active tab is on New Tab, render the rich New Tab Page */}
-          {(!activeTab || activeTab.isNewTab || activeTab.url === 'adal://newtab') && (
+          {/* If the active tab is on New Tab, render the rich New Tab Page with per-tab state */}
+          {(!activeTab || activeTab.isNewTab || activeTab.url === 'adal://newtab') ? (
             <NewTabPage
+              key={activeTab?.id || 'newtab-empty'}
               shortcuts={settings.shortcuts || []}
               onNavigate={handleNavigate}
               onAddShortcutClick={() => setIsAddShortcutOpen(true)}
               onDeleteShortcut={handleDeleteShortcut}
               onCustomizeClick={() => setIsSettingsOpen(true)}
+              theme={settings.theme}
             />
+          ) : (
+            /* When active tab is on an external website:
+               In Electron: native WebContentsView is placed directly over workspaceRef to render the real website.
+               In external browser preview: display desktop application status banner. */
+            (!window.electronAPI) && (
+              <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center">
+                <div className={`max-w-md p-6 rounded-2xl border shadow-xl space-y-4 ${
+                  settings.theme === 'light' ? 'bg-white border-slate-200 text-slate-800' : 'bg-[#0f1424] border-white/10 text-white'
+                }`}>
+                  <div className="text-base font-bold">
+                    AdaL Nexus Desktop Application
+                  </div>
+                  <p className="text-xs text-slate-400">
+                    Navigated to: <span className="font-mono text-violet-400 break-all">{activeTab.url}</span>
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    Real Chromium WebContentsView renders directly in the AdaL Nexus desktop window. To view, switch to the desktop app or run <code className="px-1.5 py-0.5 rounded bg-violet-950 text-violet-300">npm run dev</code>.
+                  </p>
+                  <div className="flex justify-center gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => handleNavigate('adal://newtab')}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-medium cursor-pointer ${
+                        settings.theme === 'light' ? 'bg-slate-100 hover:bg-slate-200 text-slate-700' : 'bg-white/10 hover:bg-white/15 text-slate-200'
+                      }`}
+                    >
+                      Back to New Tab
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => window.open(activeTab.url, '_blank')}
+                      className="px-3 py-1.5 rounded-xl text-xs bg-violet-600 hover:bg-violet-700 text-white font-medium shadow-md shadow-violet-600/30 cursor-pointer"
+                    >
+                      Open in External Browser ↗
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )
           )}
-
-          {/* When active tab is on an external website, WebContentsView is placed over workspaceRef! */}
         </main>
       </div>
 
@@ -429,6 +498,7 @@ export const App: React.FC = () => {
         onClose={() => setIsBookmarksOpen(false)}
         onOpenBookmark={handleNavigate}
         onRemoveBookmark={handleRemoveBookmark}
+        theme={settings.theme}
       />
 
       <HistoryModal
@@ -438,6 +508,7 @@ export const App: React.FC = () => {
         onOpenUrl={handleNavigate}
         onClearHistory={handleClearHistory}
         onRemoveItem={handleRemoveHistoryItem}
+        theme={settings.theme}
       />
 
       <DownloadsModal
@@ -447,6 +518,7 @@ export const App: React.FC = () => {
         onOpenFile={handleOpenFile}
         onShowInFolder={handleShowInFolder}
         onCancelDownload={handleCancelDownload}
+        theme={settings.theme}
       />
 
       <SettingsModal
@@ -461,11 +533,13 @@ export const App: React.FC = () => {
         isOpen={isAddShortcutOpen}
         onClose={() => setIsAddShortcutOpen(false)}
         onAddShortcut={handleAddShortcut}
+        theme={settings.theme}
       />
 
       <AgentModal
         isOpen={isAgentModalOpen}
         onClose={() => setIsAgentModalOpen(false)}
+        theme={settings.theme}
       />
     </div>
   );

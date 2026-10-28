@@ -41,6 +41,8 @@ export interface DownloadItem {
   endTime?: number;
   speed?: number; // bytes per sec
   percent?: number;
+  isDangerous?: boolean;
+  fileMissing?: boolean;
 }
 
 export interface ShortcutItem {
@@ -57,6 +59,7 @@ export interface BrowserSettings {
   customSearchUrl?: string;
   homeUrl?: string;
   downloadPath?: string;
+  downloadLocationMode?: 'downloads' | 'managed';
   shortcuts: ShortcutItem[];
 }
 

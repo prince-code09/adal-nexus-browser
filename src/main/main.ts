@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, session, shell } from 'electron';
 import * as path from 'path';
 import * as dotenv from 'dotenv';
 import { IPC_CHANNELS } from '../shared/ipc-channels';
@@ -15,6 +15,9 @@ let browserStore: BrowserStore;
 let tabManager: TabManager;
 let downloadManager: DownloadManager;
 
+const CHROME_DESKTOP_UA =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36';
+
 // Initial application settings for legacy compatibility
 let currentSettings: AppSettings = {
   llmProvider: (process.env.DEFAULT_LLM_PROVIDER as any) || 'mock',
@@ -30,6 +33,7 @@ let currentSettings: AppSettings = {
 };
 
 function initializeServices(): void {
+  // Use persistent user data directory
   browserStore = new BrowserStore();
   tabManager = new TabManager(browserStore, () => mainWindow);
   downloadManager = new DownloadManager(browserStore, () => mainWindow);
@@ -57,14 +61,16 @@ function createWindow(): void {
   if (isDev && !process.env.TEST_BUILD) {
     mainWindow.loadURL(devServerUrl).catch(() => {
       setTimeout(() => {
-        if (mainWindow) mainWindow.loadURL(devServerUrl);
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.loadURL(devServerUrl);
+        }
       }, 1500);
     });
   } else {
     mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
   }
 
-  // Deny untrusted new-window creation directly in main shell window
+  // Deny untrusted new-window creation directly in main shell window; route to managed tab
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (tabManager) {
       tabManager.createTab(url, true);
@@ -84,7 +90,14 @@ function createWindow(): void {
   });
 
   mainWindow.on('resize', () => {
-    // Active tab bounds will be refreshed when the React layout notifies tab:set-bounds
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    const [w, h] = mainWindow.getSize();
+    tabManager.setBounds({
+      x: 72,
+      y: 84,
+      width: Math.max(200, w - 72),
+      height: Math.max(200, h - 84),
+    });
   });
 
   mainWindow.on('closed', () => {
@@ -144,10 +157,7 @@ function registerIpcHandlers(): void {
 
   // --- Navigation Controls ---
   ipcMain.handle(IPC_CHANNELS.NAV_NAVIGATE, (_event, tabId: string, urlOrQuery: string) => {
-    console.log('[Main IPC] NAV_NAVIGATE received:', { tabId, urlOrQuery });
-    const result = tabManager.navigate(tabId, urlOrQuery);
-    console.log('[Main IPC] NAV_NAVIGATE result:', result);
-    return result;
+    return tabManager.navigate(tabId, urlOrQuery);
   });
 
   ipcMain.handle(IPC_CHANNELS.NAV_GO_BACK, (_event, tabId: string) => {
@@ -196,14 +206,24 @@ function registerIpcHandlers(): void {
     return browserStore.isBookmarked(url);
   });
 
-  // --- History ---
+  // --- History & Browsing Data ---
   ipcMain.handle(IPC_CHANNELS.HISTORY_GET, () => {
     return browserStore.getHistory();
   });
 
-  ipcMain.handle(IPC_CHANNELS.HISTORY_CLEAR, () => {
+  ipcMain.handle(IPC_CHANNELS.HISTORY_CLEAR, async () => {
     browserStore.clearHistory();
+    try {
+      // Clear persistent Chromium session data and cache
+      await session.defaultSession.clearStorageData({
+        storages: ['cookies', 'localstorage', 'cachestorage', 'serviceworkers', 'indexdb'],
+      });
+      await session.defaultSession.clearCache();
+    } catch (err) {
+      console.warn('[Main] Error clearing session storage data:', err);
+    }
     mainWindow?.webContents.send(IPC_CHANNELS.EVENT_HISTORY_UPDATED, []);
+    return true;
   });
 
   ipcMain.handle(IPC_CHANNELS.HISTORY_REMOVE, (_event, id: string) => {
@@ -216,7 +236,7 @@ function registerIpcHandlers(): void {
 
   // --- Downloads ---
   ipcMain.handle(IPC_CHANNELS.DOWNLOADS_GET, () => {
-    return browserStore.getDownloads();
+    return downloadManager.getDownloads();
   });
 
   ipcMain.handle(IPC_CHANNELS.DOWNLOADS_OPEN_FILE, async (_event, id: string) => {
@@ -255,6 +275,9 @@ function registerIpcHandlers(): void {
 }
 
 app.whenReady().then(() => {
+  // Ensure Chromium's default persistent session uses modern desktop Chrome User Agent
+  session.defaultSession.setUserAgent(CHROME_DESKTOP_UA);
+
   initializeServices();
   registerIpcHandlers();
   createWindow();

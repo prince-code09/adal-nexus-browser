@@ -9,6 +9,8 @@ import {
   Download,
   Bot,
   User,
+  Sun,
+  Moon,
 } from 'lucide-react';
 import type { BrowserTab } from '../../shared/browser-types';
 
@@ -26,6 +28,8 @@ interface NavigationToolbarProps {
   onToggleDownloads: () => void;
   onOpenAgentModal: () => void;
   onOpenSettings: () => void;
+  theme?: 'dark' | 'light';
+  onToggleTheme?: () => void;
 }
 
 export const NavigationToolbar: React.FC<NavigationToolbarProps> = ({
@@ -42,12 +46,29 @@ export const NavigationToolbar: React.FC<NavigationToolbarProps> = ({
   onToggleDownloads,
   onOpenAgentModal,
   onOpenSettings,
+  theme = 'dark',
+  onToggleTheme,
 }) => {
   const [inputVal, setInputVal] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const isLight = theme === 'light';
 
-  // Sync address input when active tab changes or navigates
+  // Whenever active tab ID changes, reset editing state and synchronize
+  useEffect(() => {
+    setIsEditing(false);
+    if (activeTab) {
+      if (activeTab.isNewTab || activeTab.url === 'adal://newtab') {
+        setInputVal('');
+      } else {
+        setInputVal(activeTab.url);
+      }
+    } else {
+      setInputVal('');
+    }
+  }, [activeTab?.id]);
+
+  // Sync address input when active tab navigates if not actively typing
   useEffect(() => {
     if (!isEditing && activeTab) {
       if (activeTab.isNewTab || activeTab.url === 'adal://newtab') {
@@ -91,7 +112,13 @@ export const NavigationToolbar: React.FC<NavigationToolbarProps> = ({
   };
 
   return (
-    <div className="h-11 bg-[#0b0e1b] border-b border-white/[0.06] flex items-center gap-2 px-3 select-none text-slate-300">
+    <div
+      className={`h-11 flex items-center gap-2 px-3 select-none text-xs transition-colors duration-150 ${
+        isLight
+          ? 'bg-slate-100 border-b border-slate-200 text-slate-700'
+          : 'bg-[#0b0e1b] border-b border-white/[0.06] text-slate-300'
+      }`}
+    >
       {/* Navigation Buttons: Back, Forward, Reload/Stop, Home */}
       <div className="flex items-center gap-1 shrink-0">
         <button
@@ -100,7 +127,11 @@ export const NavigationToolbar: React.FC<NavigationToolbarProps> = ({
           disabled={!activeTab?.canGoBack}
           className={`w-7 h-7 flex items-center justify-center rounded-md transition-colors ${
             activeTab?.canGoBack
-              ? 'hover:bg-white/10 text-slate-200 cursor-pointer'
+              ? isLight
+                ? 'hover:bg-slate-200 text-slate-800 cursor-pointer'
+                : 'hover:bg-white/10 text-slate-200 cursor-pointer'
+              : isLight
+              ? 'text-slate-400 cursor-not-allowed'
               : 'text-slate-600 cursor-not-allowed'
           }`}
           title="Click to go back (Alt+Left)"
@@ -114,7 +145,11 @@ export const NavigationToolbar: React.FC<NavigationToolbarProps> = ({
           disabled={!activeTab?.canGoForward}
           className={`w-7 h-7 flex items-center justify-center rounded-md transition-colors ${
             activeTab?.canGoForward
-              ? 'hover:bg-white/10 text-slate-200 cursor-pointer'
+              ? isLight
+                ? 'hover:bg-slate-200 text-slate-800 cursor-pointer'
+                : 'hover:bg-white/10 text-slate-200 cursor-pointer'
+              : isLight
+              ? 'text-slate-400 cursor-not-allowed'
               : 'text-slate-600 cursor-not-allowed'
           }`}
           title="Click to go forward (Alt+Right)"
@@ -125,11 +160,15 @@ export const NavigationToolbar: React.FC<NavigationToolbarProps> = ({
         <button
           type="button"
           onClick={activeTab?.isLoading ? onStop : onReload}
-          className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-white/10 text-slate-300 hover:text-white transition-colors"
+          className={`w-7 h-7 flex items-center justify-center rounded-md transition-colors ${
+            isLight
+              ? 'hover:bg-slate-200 text-slate-700 hover:text-slate-900'
+              : 'hover:bg-white/10 text-slate-300 hover:text-white'
+          }`}
           title={activeTab?.isLoading ? 'Stop loading' : 'Reload page (Ctrl+R)'}
         >
           {activeTab?.isLoading ? (
-            <X className="w-4 h-4 text-violet-400" />
+            <X className="w-4 h-4 text-violet-500" />
           ) : (
             <RotateCw className="w-4 h-4" />
           )}
@@ -138,7 +177,11 @@ export const NavigationToolbar: React.FC<NavigationToolbarProps> = ({
         <button
           type="button"
           onClick={onGoHome}
-          className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-white/10 text-slate-300 hover:text-white transition-colors"
+          className={`w-7 h-7 flex items-center justify-center rounded-md transition-colors ${
+            isLight
+              ? 'hover:bg-slate-200 text-slate-700 hover:text-slate-900'
+              : 'hover:bg-white/10 text-slate-300 hover:text-white'
+          }`}
           title="Open home page"
         >
           <Home className="w-4 h-4" />
@@ -146,7 +189,13 @@ export const NavigationToolbar: React.FC<NavigationToolbarProps> = ({
       </div>
 
       {/* Pill Address Bar */}
-      <div className="flex-1 max-w-4xl mx-auto flex items-center h-8 bg-[#131828]/80 hover:bg-[#151c2e] focus-within:bg-[#161d33] border border-violet-500/30 focus-within:border-violet-500 rounded-full px-3 transition-all duration-200 shadow-sm focus-within:shadow-[0_0_15px_rgba(139,92,246,0.25)]">
+      <div
+        className={`flex-1 max-w-4xl mx-auto flex items-center h-8 rounded-full px-3 transition-all duration-200 shadow-sm ${
+          isLight
+            ? 'bg-white hover:bg-slate-50 focus-within:bg-white border border-slate-300 focus-within:border-violet-500 focus-within:ring-2 focus-within:ring-violet-400/20'
+            : 'bg-[#131828]/80 hover:bg-[#151c2e] focus-within:bg-[#161d33] border border-violet-500/30 focus-within:border-violet-500 focus-within:shadow-[0_0_15px_rgba(139,92,246,0.25)]'
+        }`}
+      >
         {/* Search / Google Icon */}
         <div className="w-4 h-4 mr-2 flex items-center justify-center shrink-0">
           <svg className="w-3.5 h-3.5" viewBox="0 0 24 24">
@@ -182,38 +231,66 @@ export const NavigationToolbar: React.FC<NavigationToolbarProps> = ({
           onBlur={() => setIsEditing(false)}
           onKeyDown={handleKeyDown}
           placeholder="Search Google or type a URL"
-          className="flex-1 bg-transparent border-none outline-none text-xs text-white placeholder-slate-500 font-sans tracking-wide"
+          className={`flex-1 bg-transparent border-none outline-none text-xs font-sans tracking-wide ${
+            isLight
+              ? 'text-slate-900 placeholder-slate-400'
+              : 'text-white placeholder-slate-500'
+          }`}
         />
 
         {/* Bookmark Star Toggle */}
         <button
           type="button"
           onClick={onToggleBookmark}
-          className="p-1 rounded-full hover:bg-white/10 transition-colors ml-1"
+          className={`p-1 rounded-full transition-colors ml-1 ${
+            isLight ? 'hover:bg-slate-100' : 'hover:bg-white/10'
+          }`}
           title={isBookmarked ? 'Remove bookmark (Ctrl+D)' : 'Bookmark this tab (Ctrl+D)'}
         >
           <Star
             className={`w-3.5 h-3.5 transition-colors ${
               isBookmarked
-                ? 'text-violet-400 fill-violet-400 drop-shadow-[0_0_6px_rgba(139,92,246,0.6)]'
+                ? 'text-violet-500 fill-violet-500 drop-shadow-[0_0_6px_rgba(139,92,246,0.6)]'
+                : isLight
+                ? 'text-slate-400 hover:text-slate-700'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           />
         </button>
       </div>
 
-      {/* Right Toolbar Actions: Downloads, AI Agent, User Profile */}
-      <div className="flex items-center gap-2 shrink-0">
+      {/* Right Toolbar Actions: Quick Theme Toggle, Downloads, AI Agent, User Profile */}
+      <div className="flex items-center gap-1.5 shrink-0">
+        {/* Quick Theme Toggle */}
+        {onToggleTheme && (
+          <button
+            type="button"
+            onClick={onToggleTheme}
+            className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors cursor-pointer ${
+              isLight
+                ? 'hover:bg-slate-200 text-slate-700 hover:text-amber-600'
+                : 'hover:bg-white/10 text-slate-300 hover:text-amber-400'
+            }`}
+            title={`Switch to ${isLight ? 'Midnight Dark' : 'Light'} theme`}
+          >
+            {isLight ? <Moon className="w-4 h-4 text-violet-600" /> : <Sun className="w-4 h-4 text-amber-400" />}
+          </button>
+        )}
+
         {/* Downloads */}
         <button
           type="button"
           onClick={onToggleDownloads}
-          className="relative w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/10 text-slate-300 hover:text-white transition-colors"
+          className={`relative w-8 h-8 flex items-center justify-center rounded-lg transition-colors cursor-pointer ${
+            isLight
+              ? 'hover:bg-slate-200 text-slate-700 hover:text-slate-900'
+              : 'hover:bg-white/10 text-slate-300 hover:text-white'
+          }`}
           title="Downloads (Ctrl+J)"
         >
           <Download className="w-4 h-4" />
           {activeDownloadsCount > 0 && (
-            <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-violet-400 ring-2 ring-[#0b0e1b] animate-pulse" />
+            <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-violet-500 ring-2 ring-white animate-pulse" />
           )}
         </button>
 
@@ -221,17 +298,25 @@ export const NavigationToolbar: React.FC<NavigationToolbarProps> = ({
         <button
           type="button"
           onClick={onOpenAgentModal}
-          className="w-8 h-8 flex items-center justify-center rounded-lg bg-violet-950/60 hover:bg-violet-900/80 text-violet-300 border border-violet-500/40 hover:border-violet-400 shadow-[0_0_10px_rgba(139,92,246,0.3)] transition-all"
+          className={`w-8 h-8 flex items-center justify-center rounded-lg transition-all cursor-pointer ${
+            isLight
+              ? 'bg-violet-100 hover:bg-violet-200 text-violet-700 border border-violet-300 shadow-sm'
+              : 'bg-violet-950/60 hover:bg-violet-900/80 text-violet-300 border border-violet-500/40 hover:border-violet-400 shadow-[0_0_10px_rgba(139,92,246,0.3)]'
+          }`}
           title="AdaL Nexus AI Companion"
         >
-          <Bot className="w-4 h-4 text-violet-300" />
+          <Bot className="w-4 h-4 text-violet-600 dark:text-violet-300" />
         </button>
 
         {/* Settings / User profile */}
         <button
           type="button"
           onClick={onOpenSettings}
-          className="w-8 h-8 flex items-center justify-center rounded-full bg-white/[0.05] hover:bg-white/[0.1] text-slate-300 hover:text-white border border-white/10 transition-colors"
+          className={`w-8 h-8 flex items-center justify-center rounded-full transition-colors cursor-pointer ${
+            isLight
+              ? 'bg-white hover:bg-slate-200 text-slate-700 hover:text-slate-900 border border-slate-300'
+              : 'bg-white/[0.05] hover:bg-white/[0.1] text-slate-300 hover:text-white border border-white/10'
+          }`}
           title="Settings & Preferences"
         >
           <User className="w-4 h-4" />
