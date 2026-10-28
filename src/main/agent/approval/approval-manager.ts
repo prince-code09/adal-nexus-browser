@@ -17,6 +17,14 @@ export class ApprovalManager {
     this.requireApprovalForConsequential = enabled;
   }
 
+  public setEnabled(enabled: boolean): void {
+    this.requireApprovalForConsequential = enabled;
+  }
+
+  public isEnabled(): boolean {
+    return this.requireApprovalForConsequential;
+  }
+
   /**
    * Evaluates if a given tool and its parameters constitute a consequential action
    */

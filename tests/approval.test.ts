@@ -77,4 +77,26 @@ describe('ApprovalManager Safety and Consequential Action Controls', () => {
     expect(res1).toBe(false);
     expect(manager.getPendingRequests().length).toBe(0);
   });
+
+  it('updates requireApprovalForConsequential preference at runtime via setEnabled and setRequireApproval', () => {
+    const manager = new ApprovalManager(true);
+    expect(manager.isEnabled()).toBe(true);
+    expect(manager.isConsequential('send_message', {})).toBe(true);
+
+    // Disable approval requirement
+    manager.setEnabled(false);
+    expect(manager.isEnabled()).toBe(false);
+    expect(manager.isConsequential('send_message', {})).toBe(false);
+    expect(manager.isConsequential('delete_data', {})).toBe(false);
+
+    // Re-enable approval requirement
+    manager.setEnabled(true);
+    expect(manager.isEnabled()).toBe(true);
+    expect(manager.isConsequential('send_message', {})).toBe(true);
+
+    // Test setRequireApproval method
+    manager.setRequireApproval(false);
+    expect(manager.isEnabled()).toBe(false);
+    expect(manager.isConsequential('send_message', {})).toBe(false);
+  });
 });

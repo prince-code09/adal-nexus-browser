@@ -11,6 +11,7 @@ import { VerificationEngine } from '../src/main/agent/verification/verification-
 import { DatabaseService } from '../src/main/db/database';
 import { WebSocketService } from '../src/main/services/websocket-service';
 import { ExecutionEngine } from '../src/main/agent/execution-engine';
+import { TaskPlanner } from '../src/main/agent/planner';
 import type { ExecutionPlan } from '../src/shared/types';
 
 dotenv.config();
@@ -79,11 +80,16 @@ describe('AI Browser Automation & Safety Engine Integration', () => {
       return;
     }
 
-    const adapter = new GeminiAIAdapter(apiKey, 'gemini-3.5-flash');
-    const tools = toolRegistry.getAllTools();
-    const plan = await adapter.generatePlan(
-      'Research five AI startups and compile verified CSV pricing table',
-      tools
+    const planner = new TaskPlanner(toolRegistry, {
+      llmProvider: 'gemini',
+      apiKey,
+      model: 'gemini-3.5-flash',
+      requireApprovalForConsequential: true,
+      autoVerify: true,
+    });
+
+    const plan = await planner.createPlan(
+      'Research five AI startups and compile verified CSV pricing table'
     );
 
     expect(plan).toBeDefined();
@@ -91,7 +97,7 @@ describe('AI Browser Automation & Safety Engine Integration', () => {
     expect(plan.steps.length).toBeGreaterThan(0);
     expect(plan.steps[0].tool).toBeTruthy();
     expect(plan.steps[0].order).toBe(1);
-  }, 20000);
+  }, 25000);
 
   it('2. Blocks automated authentication & password inputs as a security violation', async () => {
     const context: any = {

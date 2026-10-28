@@ -52,29 +52,54 @@ Rules:
 }`;
 
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.apiKey}`;
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [
-          {
-            role: 'user',
-            parts: [
-              { text: systemPrompt },
-              { text: `User Goal: "${goal}"` },
-            ],
-          },
-        ],
-        generationConfig: {
-          responseMimeType: 'application/json',
-          temperature: 0.1,
-        },
-      }),
-    });
+    
+    let lastErr = '';
+    let response: Response | null = null;
+    
+    for (let attempt = 0; attempt <= 1; attempt++) {
+      if (attempt > 0) {
+        await new Promise((r) => setTimeout(r, 1000));
+      }
 
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`Gemini API error (${response.status}): ${errText}`);
+      try {
+        response = await fetch(url, {
+          method: 'POST',
+          signal: AbortSignal.timeout(6000),
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [
+              {
+                role: 'user',
+                parts: [
+                  { text: systemPrompt },
+                  { text: `User Goal: "${goal}"` },
+                ],
+              },
+            ],
+            generationConfig: {
+              responseMimeType: 'application/json',
+              temperature: 0.1,
+            },
+          }),
+        });
+
+        if (response.ok) {
+          break;
+        }
+
+        lastErr = await response.text();
+        // Only retry once on transient 503 or 429
+        if (response.status !== 503 && response.status !== 429) {
+          break;
+        }
+      } catch (e: any) {
+        lastErr = e?.message || String(e);
+        break;
+      }
+    }
+
+    if (!response || !response.ok) {
+      throw new Error(`Gemini API error (${response?.status || 500}): ${lastErr}`);
     }
 
     const data = (await response.json()) as any;

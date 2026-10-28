@@ -7,6 +7,7 @@ export class DatabaseService {
   private dbPath: string;
   private isSqliteNative: boolean = false;
   private fallbackStore: Map<string, TaskRecord> = new Map();
+  private fallbackLogs: Map<string, ActionLogItem[]> = new Map();
 
   constructor(customPath?: string) {
     const dataDir = customPath ? path.dirname(customPath) : path.resolve(process.cwd(), 'data');
@@ -273,6 +274,47 @@ export class DatabaseService {
       } catch (err) {
         console.error('Error logging action to SQLite:', err);
       }
+    }
+
+    const currentLogs = this.fallbackLogs.get(taskId) || [];
+    currentLogs.push({ ...log });
+    this.fallbackLogs.set(taskId, currentLogs);
+  }
+
+  public getLogsForTask(taskId: string): ActionLogItem[] {
+    if (!taskId) return [];
+
+    if (this.isSqliteNative && this.db) {
+      try {
+        const stmt = this.db.prepare(
+          'SELECT * FROM action_logs WHERE task_id = ? ORDER BY timestamp ASC'
+        );
+        const rows = stmt.all(taskId);
+        if (!rows || rows.length === 0) return [];
+
+        return rows.map((row: any) => ({
+          id: row.id,
+          timestamp: Number(row.timestamp),
+          level: row.level as ActionLogItem['level'],
+          title: row.title,
+          details: row.details || undefined,
+          stepId: row.step_id || undefined,
+          tool: row.tool || undefined,
+          data: row.data_json ? this.safeParseJson(row.data_json) : undefined,
+        }));
+      } catch (err) {
+        console.error('Error fetching logs from SQLite for task:', taskId, err);
+      }
+    }
+
+    return this.fallbackLogs.get(taskId) || [];
+  }
+
+  private safeParseJson(jsonStr: string): any {
+    try {
+      return JSON.parse(jsonStr);
+    } catch {
+      return jsonStr;
     }
   }
 
