@@ -6,6 +6,15 @@ import type { AppSettings, BrowserBounds, BrowserSettings } from '../shared/type
 import { BrowserStore } from './storage/browser-store';
 import { TabManager } from './browser/tab-manager';
 import { DownloadManager } from './browser/download-manager';
+import { ArtifactService } from './services/artifact-service';
+import { DatabaseService } from './db/database';
+import { WebSocketService } from './services/websocket-service';
+import { ToolRegistry } from './agent/tools/registry';
+import { PlaywrightBrowserService } from './browser/browser-service';
+import { ApprovalManager } from './agent/approval/approval-manager';
+import { VerificationEngine } from './agent/verification/verification-engine';
+import { TaskPlanner } from './agent/planner';
+import { ExecutionEngine } from './agent/execution-engine';
 
 // Load environment variables (.env)
 dotenv.config();
@@ -15,16 +24,26 @@ let browserStore: BrowserStore;
 let tabManager: TabManager;
 let downloadManager: DownloadManager;
 
+let artifactService: ArtifactService;
+let dbService: DatabaseService;
+let wsService: WebSocketService;
+let toolRegistry: ToolRegistry;
+let playwrightBrowserService: PlaywrightBrowserService;
+let approvalManager: ApprovalManager;
+let verificationEngine: VerificationEngine;
+let planner: TaskPlanner;
+let executionEngine: ExecutionEngine;
+
 const CHROME_DESKTOP_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36';
 
 // Initial application settings for legacy compatibility
 let currentSettings: AppSettings = {
-  llmProvider: (process.env.DEFAULT_LLM_PROVIDER as any) || 'mock',
+  llmProvider: (process.env.DEFAULT_LLM_PROVIDER as any) || 'gemini',
   apiKey: process.env.GEMINI_API_KEY || process.env.LLM_API_KEY || '',
-  model: process.env.LLM_MODEL || 'gemini-1.5-pro-latest',
+  model: process.env.LLM_MODEL || 'gemini-3.5-flash',
   apiBaseUrl: process.env.LLM_BASE_URL || undefined,
-  headlessBrowser: process.env.HEADLESS_BROWSER === 'true' || false,
+  headlessBrowser: process.env.HEADLESS_BROWSER !== 'false',
   viewportWidth: 1280,
   viewportHeight: 800,
   requireApprovalForConsequential: true,
@@ -37,6 +56,58 @@ function initializeServices(): void {
   browserStore = new BrowserStore();
   tabManager = new TabManager(browserStore, () => mainWindow);
   downloadManager = new DownloadManager(browserStore, () => mainWindow);
+
+  const userData = app.getPath('userData');
+  const artifactsDir = path.join(userData, 'artifacts');
+  const dataDir = path.join(userData, 'data');
+  const dbPath = path.join(dataDir, 'adal-nexus.sqlite');
+
+  artifactService = new ArtifactService(artifactsDir);
+  dbService = new DatabaseService(dbPath);
+  wsService = new WebSocketService(currentSettings.wsPort || 5174);
+  wsService.start().catch((e) => console.warn('[Main] WebSocket notice:', e.message));
+
+  toolRegistry = new ToolRegistry();
+  playwrightBrowserService = new PlaywrightBrowserService({
+    headless: currentSettings.headlessBrowser,
+    viewportWidth: currentSettings.viewportWidth,
+    viewportHeight: currentSettings.viewportHeight,
+  });
+
+  playwrightBrowserService.onStateChange((state) => {
+    mainWindow?.webContents.send(IPC_CHANNELS.EVENT_BROWSER_STATE, state);
+  });
+
+  approvalManager = new ApprovalManager(currentSettings.requireApprovalForConsequential);
+  verificationEngine = new VerificationEngine({ artifactService });
+  planner = new TaskPlanner(toolRegistry, currentSettings);
+
+  executionEngine = new ExecutionEngine(
+    toolRegistry,
+    playwrightBrowserService,
+    artifactService,
+    approvalManager,
+    verificationEngine,
+    dbService,
+    wsService,
+    {
+      onStatusChanged: (data) => {
+        mainWindow?.webContents.send(IPC_CHANNELS.EVENT_STATUS_CHANGED, data);
+      },
+      onPlanUpdated: (plan) => {
+        mainWindow?.webContents.send(IPC_CHANNELS.EVENT_PLAN_UPDATED, plan);
+      },
+      onStepUpdated: (step) => {
+        mainWindow?.webContents.send(IPC_CHANNELS.EVENT_STEP_UPDATED, step);
+      },
+      onLogAdded: (log) => {
+        mainWindow?.webContents.send(IPC_CHANNELS.EVENT_LOG_ADDED, log);
+      },
+      onApprovalRequested: (request) => {
+        mainWindow?.webContents.send(IPC_CHANNELS.EVENT_APPROVAL_REQUEST, request);
+      },
+    }
+  );
 }
 
 function createWindow(): void {
@@ -265,13 +336,112 @@ function registerIpcHandlers(): void {
     }
   );
 
-  // --- Legacy Compatibility ---
+  // --- AI Agent & Automation Handlers ---
   ipcMain.handle(IPC_CHANNELS.GET_SETTINGS, () => currentSettings);
+
   ipcMain.handle(IPC_CHANNELS.SAVE_SETTINGS, (_event, updated: Partial<AppSettings>) => {
     currentSettings = { ...currentSettings, ...updated };
+    planner?.updateSettings(currentSettings);
+    if (updated.requireApprovalForConsequential !== undefined) {
+      approvalManager?.setEnabled(updated.requireApprovalForConsequential);
+    }
     return currentSettings;
   });
-  ipcMain.handle(IPC_CHANNELS.GET_HISTORY, () => []);
+
+  ipcMain.handle(IPC_CHANNELS.START_TASK, async (_event, goal: string) => {
+    if (!goal || typeof goal !== 'string') {
+      throw new Error('Task goal must be a non-empty string');
+    }
+
+    const taskId = `task-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+
+    // Notify renderer: task planning started
+    mainWindow?.webContents.send(IPC_CHANNELS.EVENT_STATUS_CHANGED, {
+      taskId,
+      status: 'planning',
+      verificationStatus: 'UNVERIFIED',
+    });
+
+    try {
+      const plan = await planner.createPlan(goal);
+      mainWindow?.webContents.send(IPC_CHANNELS.EVENT_PLAN_UPDATED, plan);
+
+      // Launch execution in background without blocking IPC invoke
+      setTimeout(async () => {
+        try {
+          await executionEngine.executePlan(taskId, plan);
+        } catch (err: any) {
+          console.error('[Main] Task execution error:', err);
+        }
+      }, 20);
+
+      return { taskId, plan };
+    } catch (err: any) {
+      console.error('[Main] Task planning error:', err);
+      mainWindow?.webContents.send(IPC_CHANNELS.EVENT_STATUS_CHANGED, {
+        taskId,
+        status: 'failed',
+        verificationStatus: 'UNVERIFIED',
+        error: err.message,
+      });
+      throw err;
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.CANCEL_TASK, (_event, taskId: string) => {
+    return executionEngine.cancel(taskId);
+  });
+
+  ipcMain.handle(
+    IPC_CHANNELS.APPROVAL_RESPONSE,
+    (_event, requestId: string, approved: boolean) => {
+      return approvalManager.resolveApproval(requestId, approved);
+    }
+  );
+
+  ipcMain.handle(IPC_CHANNELS.OPEN_ARTIFACT, async (_event, filePath: string) => {
+    try {
+      const safePath = artifactService.resolveSafePath(filePath);
+      await shell.openPath(safePath);
+      return true;
+    } catch (err) {
+      console.warn('[Main] Error opening artifact:', err);
+      return false;
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.GET_ARTIFACT_CONTENT, async (_event, filePath: string) => {
+    try {
+      const parsed = await artifactService.readAndParseCsv(filePath);
+      return parsed;
+    } catch (err: any) {
+      return { error: err.message };
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.GET_HISTORY, () => {
+    return dbService.getAllTasks();
+  });
+
+  ipcMain.handle(IPC_CHANNELS.GET_TASK_DETAILS, (_event, taskId: string) => {
+    const task = dbService.getTask(taskId);
+    const logs = dbService.getLogsForTask(taskId);
+    return { task, logs };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.TAKEOVER_BROWSER, (_event, takeover: boolean) => {
+    playwrightBrowserService.setTakeover(takeover);
+    return true;
+  });
+
+  ipcMain.handle(IPC_CHANNELS.NAVIGATE_BROWSER, async (_event, url: string) => {
+    return await playwrightBrowserService.navigate(url);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.RELOAD_BROWSER, async () => {
+    await playwrightBrowserService.reload();
+    return true;
+  });
 }
 
 app.whenReady().then(() => {
@@ -293,4 +463,16 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
   }
+});
+
+app.on('will-quit', async () => {
+  try {
+    await playwrightBrowserService?.close();
+  } catch {}
+  try {
+    wsService?.stop();
+  } catch {}
+  try {
+    dbService?.close();
+  } catch {}
 });

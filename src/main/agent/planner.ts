@@ -22,11 +22,11 @@ export class TaskPlanner {
   }
 
   private getAdapter(): AIProviderAdapter {
-    const provider = this.settings.llmProvider;
-    const apiKey = this.settings.apiKey;
+    const provider = this.settings.llmProvider || (process.env.DEFAULT_LLM_PROVIDER as any) || 'gemini';
+    const apiKey = this.settings.apiKey || (provider === 'gemini' ? process.env.GEMINI_API_KEY : process.env.OPENAI_API_KEY) || '';
 
     if (provider === 'gemini' && apiKey) {
-      return new GeminiAIAdapter(apiKey, this.settings.model || 'gemini-1.5-pro-latest');
+      return new GeminiAIAdapter(apiKey, this.settings.model || process.env.LLM_MODEL || 'gemini-3.5-flash');
     }
 
     if (provider === 'openai' && apiKey) {

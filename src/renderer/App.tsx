@@ -7,6 +7,14 @@ import type {
   BrowserSettings,
   ShortcutItem,
 } from '../shared/browser-types';
+import type {
+  ExecutionPlan,
+  ActionLogItem,
+  ApprovalRequest,
+  TaskStatus,
+  VerificationStatus,
+  ArtifactItem,
+} from '../shared/types';
 import { TitleBar } from './components/TitleBar';
 import { NavigationToolbar } from './components/NavigationToolbar';
 import { Sidebar, SidebarTab } from './components/Sidebar';
@@ -17,6 +25,7 @@ import { DownloadsModal } from './components/DownloadsModal';
 import { SettingsModal } from './components/SettingsModal';
 import { AddShortcutModal } from './components/AddShortcutModal';
 import { AgentModal } from './components/AgentModal';
+import { CompanionPanel } from './components/CompanionPanel';
 
 export const App: React.FC = () => {
   const api = window.adalNexus;
@@ -44,6 +53,17 @@ export const App: React.FC = () => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isAddShortcutOpen, setIsAddShortcutOpen] = useState(false);
   const [isAgentModalOpen, setIsAgentModalOpen] = useState(false);
+
+  // AI Agent & Automation State
+  const [isAgentOpen, setIsAgentOpen] = useState(false);
+  const [currentGoal, setCurrentGoal] = useState('');
+  const [taskStatus, setTaskStatus] = useState<TaskStatus>('idle');
+  const [verificationStatus, setVerificationStatus] = useState<VerificationStatus>('UNVERIFIED');
+  const [plan, setPlan] = useState<ExecutionPlan | null>(null);
+  const [logs, setLogs] = useState<ActionLogItem[]>([]);
+  const [pendingApproval, setPendingApproval] = useState<ApprovalRequest | null>(null);
+  const [currentTaskId, setCurrentTaskId] = useState<string | null>(null);
+  const [artifacts, setArtifacts] = useState<ArtifactItem[]>([]);
 
   // Sync theme with document.documentElement for Tailwind dark class
   useEffect(() => {
@@ -146,6 +166,58 @@ export const App: React.FC = () => {
       unsubSettings();
     };
   }, [api, syncBounds]);
+
+  // Subscribe to AI Agent and automation events
+  useEffect(() => {
+    const electron = window.electronAPI;
+    if (!electron) return;
+
+    const unsubPlan = electron.onPlanUpdated?.((updatedPlan) => {
+      setPlan(updatedPlan);
+    });
+
+    const unsubStep = electron.onStepUpdated?.((updatedStep) => {
+      setPlan((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          steps: prev.steps.map((s) => (s.id === updatedStep.id ? updatedStep : s)),
+        };
+      });
+    });
+
+    const unsubLog = electron.onLogAdded?.((log) => {
+      setLogs((prev) => [...prev, log]);
+    });
+
+    const unsubStatus = electron.onTaskStatusChanged?.((data) => {
+      setTaskStatus(data.status);
+      setVerificationStatus(data.verificationStatus);
+      if (data.taskRecord?.artifacts && data.taskRecord.artifacts.length > 0) {
+        setArtifacts(data.taskRecord.artifacts);
+      }
+    });
+
+    const unsubApproval = electron.onApprovalRequested?.((req) => {
+      setPendingApproval(req);
+    });
+
+    return () => {
+      unsubPlan?.();
+      unsubStep?.();
+      unsubLog?.();
+      unsubStatus?.();
+      unsubApproval?.();
+    };
+  }, []);
+
+  // Synchronize browser bounds whenever agent panel opens or closes
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      syncBounds();
+    }, 40);
+    return () => clearTimeout(timer);
+  }, [isAgentOpen, syncBounds]);
 
   // ResizeObserver for tracking workspace bounds
   useEffect(() => {
@@ -379,7 +451,50 @@ export const App: React.FC = () => {
     } else if (tab === 'settings') {
       setIsSettingsOpen(true);
     } else if (tab === 'extensions') {
-      setIsAgentModalOpen(true);
+      setIsAgentOpen((prev) => !prev);
+    }
+  };
+
+  // Agent Actions
+  const handleStartTask = async (goal: string) => {
+    setCurrentGoal(goal);
+    setLogs([]);
+    setPlan(null);
+    setPendingApproval(null);
+    setArtifacts([]);
+    setTaskStatus('planning');
+    setVerificationStatus('UNVERIFIED');
+
+    if (window.electronAPI) {
+      try {
+        const res = await window.electronAPI.startTask(goal);
+        if (res?.taskId) {
+          setCurrentTaskId(res.taskId);
+        }
+      } catch (err: any) {
+        console.error('[App] Failed to start agent task:', err);
+        setTaskStatus('failed');
+      }
+    }
+  };
+
+  const handleCancelTask = async () => {
+    if (currentTaskId && window.electronAPI) {
+      await window.electronAPI.cancelTask(currentTaskId);
+    }
+    setTaskStatus('cancelled');
+  };
+
+  const handleApprovalResponse = async (requestId: string, approved: boolean) => {
+    if (window.electronAPI) {
+      await window.electronAPI.respondApproval(requestId, approved);
+    }
+    setPendingApproval(null);
+  };
+
+  const handleOpenArtifact = async (filePath: string) => {
+    if (window.electronAPI) {
+      await window.electronAPI.openArtifact(filePath);
     }
   };
 
@@ -414,19 +529,19 @@ export const App: React.FC = () => {
         onGoHome={handleGoHome}
         onToggleBookmark={handleToggleBookmark}
         onToggleDownloads={() => setIsDownloadsOpen((prev) => !prev)}
-        onOpenAgentModal={() => setIsAgentModalOpen(true)}
+        onOpenAgentModal={() => setIsAgentOpen((prev) => !prev)}
         onOpenSettings={() => setIsSettingsOpen(true)}
         theme={settings.theme}
         onToggleTheme={handleToggleTheme}
       />
 
-      {/* 3. Main Body: Sidebar + Browser Workspace */}
+      {/* 3. Main Body: Sidebar + Browser Workspace + AI Agent Companion */}
       <div className="flex-1 flex overflow-hidden relative">
         {/* Left Sidebar */}
         <Sidebar
           activeTab={sidebarTab}
           onSelectTab={handleSidebarSelect}
-          onOpenAgentModal={() => setIsAgentModalOpen(true)}
+          onOpenAgentModal={() => setIsAgentOpen((prev) => !prev)}
           theme={settings.theme}
         />
 
@@ -489,6 +604,25 @@ export const App: React.FC = () => {
             )
           )}
         </main>
+
+        {/* Right Collapsible AI Agent Companion Panel */}
+        {isAgentOpen && (
+          <CompanionPanel
+            currentGoal={currentGoal}
+            onStartTask={handleStartTask}
+            onCancelTask={handleCancelTask}
+            taskStatus={taskStatus}
+            verificationStatus={verificationStatus}
+            plan={plan}
+            logs={logs}
+            pendingApproval={pendingApproval}
+            onApprovalResponse={handleApprovalResponse}
+            artifacts={artifacts}
+            onOpenArtifact={handleOpenArtifact}
+            onClose={() => setIsAgentOpen(false)}
+            theme={settings.theme}
+          />
+        )}
       </div>
 
       {/* Modals & Flyouts */}

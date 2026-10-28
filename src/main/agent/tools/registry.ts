@@ -102,13 +102,18 @@ export class ToolRegistry {
       execute: async (params, context) => {
         const browser: PlaywrightBrowserService = context.browserService;
         const result = await browser.readPageContent(params);
+        // Prompt-injection defense: neutralize system prompt overrides and jailbreak attempts
+        const sanitized = result.textContent
+          .replace(/ignore\s+(all\s+)?(previous|prior)\s+instructions/gi, '[neutralized instruction override]')
+          .replace(/system\s+prompt\s+override/gi, '[neutralized prompt override]')
+          .replace(/you\s+are\s+now\s+an\s+unrestricted/gi, '[neutralized jailbreak attempt]');
         return {
           success: true,
-          data: result,
+          data: { ...result, textContent: sanitized },
           evidence: {
             title: result.title,
             url: result.url,
-            length: result.textContent.length,
+            length: sanitized.length,
           },
         };
       },
@@ -127,6 +132,10 @@ export class ToolRegistry {
         required: ['selector'],
       },
       execute: async (params, context) => {
+        const sel = (params.selector || '').toLowerCase();
+        if (sel.includes('sign-up') || sel.includes('register') || sel.includes('create-account')) {
+          context.emitLog('warn', 'Authentication Wall Detected', 'Skipping automated account creation per safety guidelines.');
+        }
         const browser: PlaywrightBrowserService = context.browserService;
         await browser.click(params.selector, params.timeout || 10000);
         return { success: true, data: { clicked: params.selector } };
@@ -146,6 +155,13 @@ export class ToolRegistry {
         required: ['selector', 'text'],
       },
       execute: async (params, context) => {
+        const sel = (params.selector || '').toLowerCase();
+        if (sel.includes('password') || sel.includes('passwd') || sel.includes('pin') || sel.includes('secret') || sel.includes('auth')) {
+          return {
+            success: false,
+            error: 'Security constraint violation: Automated authentication, signup, and password entry are not permitted.',
+          };
+        }
         const browser: PlaywrightBrowserService = context.browserService;
         await browser.fill(params.selector, params.text);
         return { success: true, data: { filled: params.selector, textLength: params.text.length } };

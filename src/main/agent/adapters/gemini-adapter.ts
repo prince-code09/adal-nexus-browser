@@ -8,9 +8,9 @@ export class GeminiAIAdapter implements AIProviderAdapter {
   private apiKey: string;
   private model: string;
 
-  constructor(apiKey: string, model = 'gemini-1.5-pro-latest') {
+  constructor(apiKey: string, model = 'gemini-3.5-flash') {
     this.apiKey = apiKey;
-    this.model = model;
+    this.model = model || 'gemini-3.5-flash';
   }
 
   public async generatePlan(goal: string, tools: ToolDefinition[]): Promise<ExecutionPlan> {
@@ -33,7 +33,8 @@ Rules:
 2. Select ONLY from the available registered tools. Do not invent tools.
 3. Every plan must end with an independent verification step (such as verify_csv_artifact).
 4. If an action deletes data, sends messages, or executes consequential external changes, set requiresApproval to true.
-5. Return ONLY a valid JSON object matching this schema:
+5. Automated login, signup, account creation, and password entry are strictly prohibited. Never generate steps that attempt to log in or create user accounts.
+6. Return ONLY a valid JSON object matching this schema:
 {
   "goal": string,
   "summary": string,
@@ -77,12 +78,22 @@ Rules:
     }
 
     const data = (await response.json()) as any;
-    const candidateText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    const parts = data.candidates?.[0]?.content?.parts || [];
+    // Select the part containing JSON text (skipping pure thoughts if any)
+    const jsonPart = parts.find((p: any) => p.text && (p.text.includes('"steps"') || p.text.includes('"goal"'))) || parts[parts.length - 1] || parts[0];
+    const candidateText = jsonPart?.text;
     if (!candidateText) {
       throw new Error('No plan text returned by Gemini API');
     }
 
-    const parsedJson = JSON.parse(candidateText);
+    let cleanText = candidateText.trim();
+    if (cleanText.startsWith('```json')) {
+      cleanText = cleanText.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+    } else if (cleanText.startsWith('```')) {
+      cleanText = cleanText.replace(/^```\s*/, '').replace(/\s*```$/, '');
+    }
+
+    const parsedJson = JSON.parse(cleanText);
     const validated = ExecutionPlanSchema.parse({
       ...parsedJson,
       createdAt: Date.now(),
