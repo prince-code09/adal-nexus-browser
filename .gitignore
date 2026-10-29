@@ -1,27 +1,39 @@
 # Dependencies
 node_modules/
 
-# Build artifacts
+# Build artifacts & packages
 dist/
 release/
+out/
 .vite/
+*.exe
+*.backup.exe
 
-# Local databases and logs
+# Local databases, profiles and logs
 data/
+userData/
 *.sqlite
 *.sqlite-journal
 *.log
 
-# Generated artifacts (except templates)
+# Generated test and runtime artifacts
 artifacts/
 temp_artifacts/
 temp_tools_artifacts/
 temp_exec_test/
+temp_*
+downloads/
+coverage/
+.playwright/
 
 # Environment variables & secrets
 .env
 .env.local
 .env.*.local
+*.pem
+*.key
+*.cert
+*.p12
 
 # OS files
 Thumbs.db

@@ -21,6 +21,9 @@ export interface ExecutionContext {
   stepId: string;
   browserService: any;
   artifactService: any;
+  tabManager?: any;
+  accumulatedFindings?: any[];
+  accumulatedConclusion?: string;
   emitLog: (level: 'info' | 'warn' | 'error' | 'success' | 'action', title: string, details?: string, data?: any) => void;
   checkCancelled: () => boolean;
 }

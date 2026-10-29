@@ -28,12 +28,18 @@ export class VerificationEngine {
     const assertions: VerificationAssertion[] = [];
     const artifactsChecked: string[] = [];
 
-    // Find if the plan generated a CSV artifact
+    // Find if the plan generated a PDF or CSV artifact
+    let pdfPath: string | null = null;
     let csvPath: string | null = null;
     let expectedRowCount = 1;
     let requiredColumns = ['company_name', 'product', 'pricing', 'source_url'];
 
     for (const step of plan.steps) {
+      if (step.tool === 'file_create_pdf' || step.tool === 'verify_pdf_artifact') {
+        if (step.params?.path) {
+          pdfPath = step.params.path;
+        }
+      }
       if (step.tool === 'file_create_csv' || step.tool === 'verify_csv_artifact') {
         if (step.params?.path) {
           csvPath = step.params.path;
@@ -50,10 +56,6 @@ export class VerificationEngine {
       }
     }
 
-    if (!csvPath) {
-      csvPath = 'artifacts/startups.csv';
-    }
-
     // Assertion 1: Execution Completed Without Failures or Skipped Steps
     const incompleteSteps = plan.steps.filter((s) => s.status !== 'completed');
     assertions.push({
@@ -64,6 +66,78 @@ export class VerificationEngine {
       passed: incompleteSteps.length === 0,
       evidence: { incompleteStepIds: incompleteSteps.map((s) => s.id) },
     });
+
+    // Handle PDF Verification if PDF path was targeted
+    if (pdfPath) {
+      let pdfVerified = false;
+      let pdfDetail: any = null;
+      let pdfError = '';
+
+      try {
+        pdfDetail = await this.artifactService.readAndVerifyPdf(pdfPath);
+        pdfVerified = pdfDetail.valid && pdfDetail.sizeBytes > 500;
+        artifactsChecked.push(pdfDetail.path);
+      } catch (err: any) {
+        pdfError = err.message || String(err);
+      }
+
+      assertions.push({
+        id: 'assert-pdf-exists',
+        name: 'Consolidated PDF Report Artifact Exists',
+        expected: `PDF report ${pdfPath} exists on disk with valid magic header (%PDF-) and readable size`,
+        actual: pdfVerified
+          ? `Valid PDF generated (${pdfDetail?.sizeBytes} bytes, verified magic header %PDF-)`
+          : `PDF audit failed: ${pdfError || 'Corrupted or missing PDF file'}`,
+        passed: pdfVerified,
+        evidence: pdfDetail || { error: pdfError },
+      });
+
+      // Assertion: Topic & Artifact Semantic Correlation
+      const goalLower = plan.goal.toLowerCase();
+      const pdfTitleLower = (pdfDetail?.title || '').toLowerCase();
+      let topicMismatch = false;
+      let mismatchReason = '';
+
+      if (goalLower.includes('laptop') || goalLower.includes('16gb') || goalLower.includes('ram')) {
+        if (pdfTitleLower.includes('mango') || pdfTitleLower.includes('fruit') || pdfTitleLower.includes('fresh mangoes')) {
+          topicMismatch = true;
+          mismatchReason = 'Requested laptop price research but generated Mango PDF report.';
+        }
+      } else if (goalLower.includes('mango') || goalLower.includes('aam')) {
+        if (pdfTitleLower.includes('laptop') || pdfTitleLower.includes('computer') || pdfTitleLower.includes('ram')) {
+          topicMismatch = true;
+          mismatchReason = 'Requested mango price comparison but generated Laptop PDF report.';
+        }
+      }
+
+      assertions.push({
+        id: 'assert-topic-correlation',
+        name: 'Topic & Findings Semantic Correlation',
+        expected: 'Generated PDF report title and findings correlate with requested task objective',
+        actual: topicMismatch ? `Mismatch detected: ${mismatchReason}` : 'Report title and findings correlate with user request',
+        passed: !topicMismatch,
+        evidence: { goal: plan.goal, reportTitle: pdfDetail?.title, mismatch: topicMismatch },
+      });
+
+      const allPassed = assertions.every((a) => a.passed);
+      const reportStatus: VerificationStatus = allPassed ? 'VERIFIED' : 'FAILED';
+      const summary = allPassed
+        ? `Task fully verified: 1 consolidated PDF report generated (${pdfDetail?.name}), physical artifact verified on disk.`
+        : `Task verification failed: ${assertions.filter((a) => !a.passed).map((a) => a.name).join(', ')}`;
+
+      return {
+        taskId,
+        status: reportStatus,
+        summary,
+        timestamp: Date.now(),
+        assertions,
+        artifactsChecked,
+      };
+    }
+
+    if (!csvPath) {
+      csvPath = 'artifacts/startups.csv';
+    }
 
     // Assertion 2: Physical CSV Artifact Exists on Disk
     let parsedCsv: any = null;

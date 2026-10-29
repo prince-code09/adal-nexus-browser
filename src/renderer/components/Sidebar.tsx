@@ -18,7 +18,7 @@ export type SidebarTab =
   | 'settings';
 
 interface SidebarProps {
-  activeTab: SidebarTab;
+  activeTab: SidebarTab | '';
   onSelectTab: (tab: SidebarTab) => void;
   onOpenAgentModal: () => void;
   theme?: 'dark' | 'light';

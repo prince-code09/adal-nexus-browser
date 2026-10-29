@@ -11,8 +11,8 @@ export function resolveUrlOrSearch(
     return trimmed;
   }
 
-  // Already has explicit protocol
-  if (/^https?:\/\//i.test(trimmed)) {
+  // Already has explicit protocol (http, https, file)
+  if (/^(https?|file):\/\//i.test(trimmed)) {
     return trimmed;
   }
 

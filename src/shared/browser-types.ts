@@ -50,17 +50,39 @@ export interface ShortcutItem {
   title: string;
   url: string;
   icon?: string;
+  favicon?: string;
   bgColor?: string;
+}
+
+export type BackgroundMode = 'cosmic' | 'white' | 'live' | 'wallpaper';
+
+export type ThemeMode = 'dark-cosmic' | 'soft-light' | 'live-wallpaper';
+
+export interface WallpaperInfo {
+  id: string;
+  url: string;
+  localPath?: string;
+  dataUri?: string;
+  title: string;
+  author?: string;
+  source: string;
+  status: 'active' | 'loading' | 'offline' | 'error';
+  lastUpdated: number;
+  errorMessage?: string;
 }
 
 export interface BrowserSettings {
   theme: 'dark' | 'light';
+  themeMode?: ThemeMode;
   searchEngine: 'google' | 'bing' | 'duckduckgo' | 'brave';
   customSearchUrl?: string;
   homeUrl?: string;
   downloadPath?: string;
   downloadLocationMode?: 'downloads' | 'managed';
   shortcuts: ShortcutItem[];
+  backgroundMode?: BackgroundMode;
+  wallpaperRefreshInterval?: number; // in minutes (default: 30)
+  cachedWallpaper?: WallpaperInfo;
 }
 
 export interface BrowserBounds {

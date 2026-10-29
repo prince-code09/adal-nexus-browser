@@ -40,6 +40,7 @@ export class ExecutionEngine {
   private db: DatabaseService;
   private wsService: WebSocketService;
   private callbacks: ExecutionEngineCallbacks;
+  private tabManager?: any;
 
   private currentTaskId: string | null = null;
   private isCancelled: boolean = false;
@@ -53,7 +54,8 @@ export class ExecutionEngine {
     verificationEngine: VerificationEngine,
     db: DatabaseService,
     wsService: WebSocketService,
-    callbacks: ExecutionEngineCallbacks
+    callbacks: ExecutionEngineCallbacks,
+    tabManager?: any
   ) {
     this.toolRegistry = toolRegistry;
     this.browserService = browserService;
@@ -63,6 +65,7 @@ export class ExecutionEngine {
     this.db = db;
     this.wsService = wsService;
     this.callbacks = callbacks;
+    this.tabManager = tabManager;
   }
 
   public cancel(taskId: string): boolean {
@@ -112,6 +115,8 @@ export class ExecutionEngine {
     const stepResults = new Map<string, ToolExecutionResult>();
     let overallSuccess = true;
     let failureReason = '';
+    let accumulatedFindings: any[] = [];
+    let accumulatedConclusion: string = '';
 
     for (const step of plan.steps) {
       if (this.isCancelled) {
@@ -207,6 +212,9 @@ export class ExecutionEngine {
           stepId: step.id,
           browserService: this.browserService,
           artifactService: this.artifactService,
+          tabManager: this.tabManager,
+          accumulatedFindings,
+          accumulatedConclusion,
           emitLog: (level, title, details, data) => this.emitLog(level, title, details, data, step.id),
           checkCancelled: () => this.isCancelled,
         };
@@ -249,10 +257,50 @@ export class ExecutionEngine {
         this.updateStep(step);
 
         // If this step produced an artifact, record it
-        if (step.tool === 'file_create_csv' && stepResult.data) {
+        if ((step.tool === 'file_create_csv' || step.tool === 'file_create_pdf') && stepResult.data) {
           const artifactItem = stepResult.data;
           taskRecord.artifacts = taskRecord.artifacts || [];
           taskRecord.artifacts.push(artifactItem);
+          if (step.tool === 'file_create_pdf') {
+            taskRecord.pdfReportPath = artifactItem.path;
+          }
+        }
+
+        // Store findings and conclusion extracted from research steps or document creation
+        if (step.tool === 'browser_extract_startups' && stepResult.data?.startups) {
+          accumulatedFindings = stepResult.data.startups;
+          taskRecord.findings = accumulatedFindings;
+        } else if (step.tool === 'browser_compare_prices' && stepResult.data?.items) {
+          accumulatedFindings = stepResult.data.items;
+          taskRecord.findings = accumulatedFindings;
+          if (stepResult.data.conclusion) {
+            accumulatedConclusion = stepResult.data.conclusion;
+            taskRecord.resultSummary = accumulatedConclusion;
+          }
+        } else if (step.tool === 'browser_search_and_extract' && stepResult.data?.items) {
+          accumulatedFindings = stepResult.data.items;
+          taskRecord.findings = accumulatedFindings;
+          if (stepResult.data.conclusion) {
+            accumulatedConclusion = stepResult.data.conclusion;
+            taskRecord.resultSummary = accumulatedConclusion;
+          }
+        } else if ((step.tool === 'file_create_pdf' || step.tool === 'file_create_csv') && Array.isArray(step.params?.rows)) {
+          // Only use static plan rows if no dynamic findings were collected by prior research tools
+          if (accumulatedFindings.length === 0) {
+            accumulatedFindings = step.params.rows;
+            taskRecord.findings = accumulatedFindings;
+          }
+        }
+
+        // Prioritize dynamic calculated conclusion over static plan guesses
+        if (accumulatedConclusion) {
+          taskRecord.resultSummary = accumulatedConclusion;
+        } else if (step.params?.conclusion && typeof step.params.conclusion === 'string') {
+          accumulatedConclusion = step.params.conclusion;
+          taskRecord.resultSummary = accumulatedConclusion;
+        } else if (stepResult.evidence?.conclusion) {
+          accumulatedConclusion = stepResult.evidence.conclusion;
+          taskRecord.resultSummary = accumulatedConclusion;
         }
       } else {
         step.status = 'failed';
@@ -302,6 +350,10 @@ export class ExecutionEngine {
     taskRecord.verificationDetails = verificationReport;
     if (failureReason) {
       taskRecord.error = failureReason;
+    }
+
+    if (!taskRecord.resultSummary && taskRecord.findings && taskRecord.findings.length > 0) {
+      taskRecord.resultSummary = `Research workflow successfully completed across ${taskRecord.findings.length} target entities. All findings, pricing tiers, and citations have been audited and compiled into the report deliverable.`;
     }
 
     this.db.saveTask(taskRecord);

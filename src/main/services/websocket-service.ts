@@ -50,9 +50,16 @@ export class WebSocketService {
 
         this.wss.on('error', (err: any) => {
           if (err.code === 'EADDRINUSE') {
+            if (this.port >= 5180) {
+              const maxErr = new Error(`[WebSocketService] Ports 5174-5180 are all occupied. Aborting port scan.`);
+              console.error(maxErr.message);
+              return reject(maxErr);
+            }
             console.warn(`[WebSocketService] Port ${this.port} in use, trying next port...`);
             this.port += 1;
-            this.wss?.close();
+            try {
+              this.wss?.close();
+            } catch {}
             this.start().then(resolve).catch(reject);
           } else {
             console.error('[WebSocketService] Server error:', err);
@@ -88,7 +95,14 @@ export class WebSocketService {
 
   public stop(): void {
     if (this.wss) {
-      this.wss.close();
+      for (const client of this.clients) {
+        try {
+          client.terminate();
+        } catch {}
+      }
+      try {
+        this.wss.close();
+      } catch {}
       this.wss = null;
     }
     this.clients.clear();

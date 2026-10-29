@@ -12,6 +12,7 @@ import { DatabaseService } from '../src/main/db/database';
 import { WebSocketService } from '../src/main/services/websocket-service';
 import { ExecutionEngine } from '../src/main/agent/execution-engine';
 import { TaskPlanner } from '../src/main/agent/planner';
+import { MockLocalAIAdapter } from '../src/main/agent/adapters/mock-adapter';
 import type { ExecutionPlan } from '../src/shared/types';
 
 dotenv.config();
@@ -290,5 +291,17 @@ describe('AI Browser Automation & Safety Engine Integration', () => {
     engine.cancel('task-cancel-run');
     const record = await promise;
     expect(record.status).toBe('cancelled');
+  });
+
+  it('7. Understands and plans tasks from Hinglish instructions', async () => {
+    const hinglishGoal = 'Paanch AI startups research karo aur unka pricing compare karke CSV banao';
+    const mockAdapter = new MockLocalAIAdapter();
+    const plan = await mockAdapter.generatePlan(hinglishGoal, toolRegistry.getAllTools());
+
+    expect(plan).toBeDefined();
+    expect(plan.steps.length).toBeGreaterThanOrEqual(3);
+    expect(plan.steps[0].tool).toBe('browser_navigate');
+    expect(plan.steps[1].tool).toBe('browser_extract_startups');
+    expect(plan.steps[2].tool).toBe('file_create_csv');
   });
 });

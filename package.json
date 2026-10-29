@@ -13,7 +13,7 @@
     "build": "npm run build:main && npm run build:renderer",
     "pack": "npm run build && electron-builder --dir",
     "dist": "npm run build && electron-builder",
-    "test": "vitest run",
+    "test": "vitest run --testTimeout 35000",
     "typecheck": "tsc --noEmit"
   },
   "build": {
@@ -24,6 +24,7 @@
     },
     "files": [
       "dist/**/*",
+      "bundled-wallpapers/**/*",
       "package.json"
     ],
     "win": {

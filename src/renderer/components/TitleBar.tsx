@@ -1,5 +1,5 @@
-import React from 'react';
-import { Plus, X, Minus, Square, Globe } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Plus, X, Minus, Square, Copy, Globe } from 'lucide-react';
 import type { BrowserTab } from '../../shared/browser-types';
 
 interface TitleBarProps {
@@ -21,9 +21,35 @@ export const TitleBar: React.FC<TitleBarProps> = ({
 }) => {
   const api = window.adalNexus;
   const isLight = theme === 'light';
+  const [isMaximized, setIsMaximized] = useState(false);
+
+  useEffect(() => {
+    const updateMaximized = async () => {
+      if (api?.isMaximized) {
+        try {
+          const max = await api.isMaximized();
+          setIsMaximized(max);
+        } catch {}
+      }
+    };
+
+    updateMaximized();
+    window.addEventListener('resize', updateMaximized);
+    return () => window.removeEventListener('resize', updateMaximized);
+  }, [api]);
 
   const handleMinimize = () => api?.minimize();
-  const handleMaximize = () => api?.maximize();
+  const handleMaximize = async () => {
+    api?.maximize();
+    setTimeout(async () => {
+      if (api?.isMaximized) {
+        try {
+          const max = await api.isMaximized();
+          setIsMaximized(max);
+        } catch {}
+      }
+    }, 100);
+  };
   const handleClose = () => api?.close();
 
   return (
@@ -134,7 +160,7 @@ export const TitleBar: React.FC<TitleBarProps> = ({
         <button
           type="button"
           onClick={handleMinimize}
-          className={`w-8 h-7 flex items-center justify-center rounded transition-colors ${
+          className={`w-8 h-7 flex items-center justify-center rounded transition-colors cursor-pointer active:scale-95 ${
             isLight ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-300/80' : 'text-slate-400 hover:text-white hover:bg-white/10'
           }`}
           title="Minimize"
@@ -144,17 +170,21 @@ export const TitleBar: React.FC<TitleBarProps> = ({
         <button
           type="button"
           onClick={handleMaximize}
-          className={`w-8 h-7 flex items-center justify-center rounded transition-colors ${
+          className={`w-8 h-7 flex items-center justify-center rounded transition-colors cursor-pointer active:scale-95 ${
             isLight ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-300/80' : 'text-slate-400 hover:text-white hover:bg-white/10'
           }`}
-          title="Maximize"
+          title={isMaximized ? 'Restore' : 'Maximize'}
         >
-          <Square className="w-3 h-3" />
+          {isMaximized ? (
+            <Copy className="w-3 h-3 rotate-180" />
+          ) : (
+            <Square className="w-3 h-3" />
+          )}
         </button>
         <button
           type="button"
           onClick={handleClose}
-          className={`w-8 h-7 flex items-center justify-center rounded transition-colors ${
+          className={`w-8 h-7 flex items-center justify-center rounded transition-colors cursor-pointer active:scale-95 ${
             isLight ? 'text-slate-600 hover:text-white hover:bg-red-600/90' : 'text-slate-400 hover:text-white hover:bg-red-600/80'
           }`}
           title="Close"

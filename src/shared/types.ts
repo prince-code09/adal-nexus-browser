@@ -80,6 +80,8 @@ export interface ArtifactItem {
   contentPreview?: string;
   headers?: string[];
   rows?: Record<string, any>[];
+  createdAt?: number;
+  updatedAt?: number;
 }
 
 export interface TaskRecord {
@@ -94,6 +96,37 @@ export interface TaskRecord {
   verificationDetails?: VerificationReport;
   artifacts?: ArtifactItem[];
   error?: string;
+  resultSummary?: string;
+  findings?: Record<string, any>[];
+  pdfReportPath?: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  sender: 'user' | 'agent' | 'system';
+  content: string;
+  timestamp: number;
+  status?: 'pending' | 'success' | 'error';
+  plan?: ExecutionPlan;
+  artifacts?: ArtifactItem[];
+  verificationStatus?: VerificationStatus;
+  keyFindings?: string[];
+  findingsData?: Record<string, any>[];
+  conclusion?: string;
+  pdfPath?: string;
+}
+
+export interface TabAgentWorkspace {
+  tabId: string;
+  messages: ChatMessage[];
+  currentGoal: string;
+  taskStatus: TaskStatus;
+  verificationStatus: VerificationStatus;
+  plan: ExecutionPlan | null;
+  logs: ActionLogItem[];
+  pendingApproval: ApprovalRequest | null;
+  currentTaskId: string | null;
+  artifacts: ArtifactItem[];
 }
 
 export interface BrowserState {
@@ -145,6 +178,8 @@ export interface ElectronAPI {
   getTaskDetails: (taskId: string) => Promise<TaskRecord | null>;
   openArtifact: (filePath: string) => Promise<boolean>;
   getArtifactContent: (filePath: string) => Promise<{ content: string; parsed?: any }>;
+  getAllArtifacts: () => Promise<ArtifactItem[]>;
+  deleteArtifact: (filePath: string) => Promise<boolean>;
 
   // Subscriptions / Events from main process
   onPlanUpdated: (callback: (plan: ExecutionPlan) => void) => () => void;
@@ -170,7 +205,34 @@ import type {
   DownloadItem,
   BrowserSettings,
   BrowserBounds,
+  WallpaperInfo,
 } from './browser-types';
+
+export type { WallpaperInfo };
+
+export interface SystemTelemetry {
+  heapUsedMB: number;
+  heapTotalMB: number;
+  rssMB: number;
+  privateBytesMB: number;
+  gpuRenderer: string;
+  gpuStatus: string;
+  cpuPercent?: number;
+  nodeVersion: string;
+  electronVersion: string;
+  chromeVersion: string;
+  sandboxVerified: boolean;
+  contextIsolationVerified: boolean;
+}
+
+export interface ExtensionItem {
+  id: string;
+  name: string;
+  version: string;
+  path?: string;
+  enabled: boolean;
+  description?: string;
+}
 
 export * from './browser-types';
 
@@ -188,6 +250,7 @@ export interface AdaLNexusAPI {
   getTabs: () => Promise<BrowserTab[]>;
   getActiveTab: () => Promise<BrowserTab | null>;
   setBounds: (bounds: BrowserBounds) => Promise<void>;
+  setViewVisible: (visible: boolean) => Promise<boolean>;
 
   // Navigation
   navigate: (tabId: string, urlOrQuery: string) => Promise<boolean>;
@@ -218,6 +281,19 @@ export interface AdaLNexusAPI {
   getBrowserSettings: () => Promise<BrowserSettings>;
   saveBrowserSettings: (settings: Partial<BrowserSettings>) => Promise<BrowserSettings>;
 
+  // Live Wallpaper
+  getLiveWallpaper?: () => Promise<WallpaperInfo>;
+  refreshLiveWallpaper?: () => Promise<WallpaperInfo>;
+
+  // System & Extensions
+  getSystemTelemetry?: () => Promise<SystemTelemetry>;
+  optimizeMemory?: () => Promise<{ success: boolean; freedMB?: number; error?: string }>;
+  clearCacheAndHistory?: () => Promise<{ success: boolean; recordsRemoved: number; cacheCleared: boolean }>;
+  getExtensions?: () => Promise<ExtensionItem[]>;
+  getAllArtifacts?: () => Promise<ArtifactItem[]>;
+  deleteArtifact?: (filePath: string) => Promise<boolean>;
+  openArtifact?: (filePath: string) => Promise<boolean>;
+
   // Events
   onTabsUpdated: (callback: (tabs: BrowserTab[]) => void) => () => void;
   onActiveTabChanged: (callback: (tab: BrowserTab | null) => void) => () => void;
@@ -225,6 +301,9 @@ export interface AdaLNexusAPI {
   onHistoryUpdated: (callback: (history: HistoryItem[]) => void) => () => void;
   onBookmarksUpdated: (callback: (bookmarks: Bookmark[]) => void) => () => void;
   onSettingsUpdated: (callback: (settings: BrowserSettings) => void) => () => void;
+  onLiveWallpaperUpdated?: (callback: (info: WallpaperInfo) => void) => () => void;
+  onFocusUrlInput?: (callback: () => void) => () => void;
+  onShortcutBookmark?: (callback: (url: string) => void) => () => void;
 }
 
 declare global {

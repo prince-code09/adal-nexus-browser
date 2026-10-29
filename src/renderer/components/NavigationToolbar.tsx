@@ -79,7 +79,7 @@ export const NavigationToolbar: React.FC<NavigationToolbarProps> = ({
     }
   }, [activeTab?.url, activeTab?.isNewTab, isEditing]);
 
-  // Global Ctrl+L shortcut handler
+  // Global Ctrl+L shortcut handler (both DOM listener & native IPC from TabManager)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && (e.key === 'l' || e.key === 'L')) {
@@ -89,7 +89,17 @@ export const NavigationToolbar: React.FC<NavigationToolbarProps> = ({
       }
     };
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+
+    const api = window.adalNexus || (window as any).electronAPI;
+    const unsub = api?.onFocusUrlInput?.(() => {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    });
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      unsub?.();
+    };
   }, []);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {

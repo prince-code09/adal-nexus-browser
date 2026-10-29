@@ -106,4 +106,13 @@ describe('ToolRegistry and Execution Sandbox', () => {
     const resolved = artifactService.resolveSafePath('artifacts/test.csv');
     expect(resolved.endsWith('test.csv')).toBe(true);
   });
+
+  it('prevents silent overwrite by resolving non-colliding filename when duplicate exists', async () => {
+    const initial = await artifactService.writeCsv('duplicate_test.csv', ['col1'], [{ col1: 'val1' }]);
+    expect(fs.existsSync(initial.path)).toBe(true);
+
+    const nonColliding = artifactService.resolveSafeNonCollidingPath('duplicate_test.csv');
+    expect(nonColliding).not.toBe(initial.path);
+    expect(nonColliding.includes('duplicate_test (1).csv')).toBe(true);
+  });
 });

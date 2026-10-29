@@ -35,6 +35,8 @@ const adalNexus: AdaLNexusAPI = {
   getTabs: () => ipcRenderer.invoke(IPC_CHANNELS.TAB_GET_ALL),
   getActiveTab: () => ipcRenderer.invoke(IPC_CHANNELS.TAB_GET_ACTIVE),
   setBounds: (bounds: BrowserBounds) => ipcRenderer.invoke(IPC_CHANNELS.TAB_SET_BOUNDS, bounds),
+  setViewVisible: (visible: boolean) =>
+    ipcRenderer.invoke(IPC_CHANNELS.TAB_SET_VIEW_VISIBLE, visible),
 
   // Navigation
   navigate: (tabId: string, urlOrQuery: string) =>
@@ -73,6 +75,19 @@ const adalNexus: AdaLNexusAPI = {
   getBrowserSettings: () => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_GET_BROWSER),
   saveBrowserSettings: (settings: Partial<BrowserSettings>) =>
     ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_SAVE_BROWSER, settings),
+
+  // Live Wallpaper
+  getLiveWallpaper: () => ipcRenderer.invoke(IPC_CHANNELS.WALLPAPER_GET_CURRENT),
+  refreshLiveWallpaper: () => ipcRenderer.invoke(IPC_CHANNELS.WALLPAPER_REFRESH_NOW),
+
+  // System & Extensions
+  getSystemTelemetry: () => ipcRenderer.invoke(IPC_CHANNELS.SYSTEM_GET_TELEMETRY),
+  optimizeMemory: () => ipcRenderer.invoke(IPC_CHANNELS.SYSTEM_OPTIMIZE_MEMORY),
+  clearCacheAndHistory: () => ipcRenderer.invoke(IPC_CHANNELS.SYSTEM_CLEAR_CACHE),
+  getExtensions: () => ipcRenderer.invoke(IPC_CHANNELS.EXTENSIONS_GET_ALL),
+  getAllArtifacts: () => ipcRenderer.invoke(IPC_CHANNELS.GET_ALL_ARTIFACTS),
+  deleteArtifact: (filePath: string) => ipcRenderer.invoke(IPC_CHANNELS.DELETE_ARTIFACT, filePath),
+  openArtifact: (filePath: string) => ipcRenderer.invoke(IPC_CHANNELS.OPEN_ARTIFACT, filePath),
 
   // Event Subscriptions
   onTabsUpdated: (callback: (tabs: BrowserTab[]) => void) => {
@@ -122,6 +137,30 @@ const adalNexus: AdaLNexusAPI = {
       ipcRenderer.removeListener(IPC_CHANNELS.EVENT_SETTINGS_UPDATED, handler);
     };
   },
+
+  onLiveWallpaperUpdated: (callback: (info: any) => void) => {
+    const handler = (_evt: any, info: any) => callback(info);
+    ipcRenderer.on(IPC_CHANNELS.EVENT_WALLPAPER_UPDATED, handler);
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.EVENT_WALLPAPER_UPDATED, handler);
+    };
+  },
+
+  onFocusUrlInput: (callback: () => void) => {
+    const handler = () => callback();
+    ipcRenderer.on(IPC_CHANNELS.EVENT_SHORTCUT_FOCUS_URL, handler);
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.EVENT_SHORTCUT_FOCUS_URL, handler);
+    };
+  },
+
+  onShortcutBookmark: (callback: (url: string) => void) => {
+    const handler = (_evt: any, url: string) => callback(url);
+    ipcRenderer.on(IPC_CHANNELS.EVENT_SHORTCUT_BOOKMARK, handler);
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.EVENT_SHORTCUT_BOOKMARK, handler);
+    };
+  },
 };
 
 // Legacy electronAPI bridge for agent backwards compatibility
@@ -147,6 +186,8 @@ const electronAPI: ElectronAPI = {
   getTaskDetails: (taskId: string) => ipcRenderer.invoke(IPC_CHANNELS.GET_TASK_DETAILS, taskId),
   openArtifact: (filePath: string) => ipcRenderer.invoke(IPC_CHANNELS.OPEN_ARTIFACT, filePath),
   getArtifactContent: (filePath: string) => ipcRenderer.invoke(IPC_CHANNELS.GET_ARTIFACT_CONTENT, filePath),
+  getAllArtifacts: () => ipcRenderer.invoke(IPC_CHANNELS.GET_ALL_ARTIFACTS),
+  deleteArtifact: (filePath: string) => ipcRenderer.invoke(IPC_CHANNELS.DELETE_ARTIFACT, filePath),
 
   onPlanUpdated: (callback: (plan: ExecutionPlan) => void) => {
     const handler = (_event: any, plan: ExecutionPlan) => callback(plan);

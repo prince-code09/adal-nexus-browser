@@ -22,6 +22,7 @@ const DEFAULT_SETTINGS: BrowserSettings = {
   theme: 'dark',
   searchEngine: 'google',
   homeUrl: 'adal://newtab',
+  backgroundMode: 'cosmic',
   shortcuts: [
     { id: 'sc-1', title: 'Google', url: 'https://www.google.com', bgColor: '#4285F4' },
     { id: 'sc-2', title: 'YouTube', url: 'https://www.youtube.com', bgColor: '#FF0000' },
@@ -261,6 +262,10 @@ export function initWebBridgeIfNeeded(): void {
       // In web fallback, layout is managed by React CSS
     },
 
+    setViewVisible: async (_visible: boolean): Promise<boolean> => {
+      return true;
+    },
+
     // Navigation
     navigate: async (tabId: string, urlOrQuery: string): Promise<boolean> => {
       const tabIndex = tabs.findIndex((t) => t.id === tabId);
@@ -361,8 +366,13 @@ export function initWebBridgeIfNeeded(): void {
       return true;
     },
 
-    goHome: async (tabId: string): Promise<boolean> => {
-      return mockApi.navigate(tabId, settings.homeUrl || 'adal://newtab');
+    goHome: async (_tabId: string): Promise<boolean> => {
+      const existingNewTab = tabs.find((t) => t.isNewTab || t.url === 'adal://newtab');
+      if (existingNewTab) {
+        return mockApi.switchTab(existingNewTab.id);
+      }
+      const newTab = await mockApi.createTab('adal://newtab');
+      return Boolean(newTab);
     },
 
     // Bookmarks
@@ -443,6 +453,72 @@ export function initWebBridgeIfNeeded(): void {
       return { ...settings };
     },
 
+    // Live Wallpaper
+    getLiveWallpaper: async () => ({
+      id: 'cosmic-1',
+      url: 'https://images.unsplash.com/photo-1519681393784-d120267933ba?auto=format&fit=crop&w=1920&q=80',
+      title: 'Starry Mountain Peak & Cosmic Nebula',
+      author: 'Benjamin Voros',
+      source: 'Unsplash (Free License)',
+      status: 'active',
+      lastUpdated: Date.now(),
+    }),
+
+    refreshLiveWallpaper: async () => ({
+      id: 'cosmic-2',
+      url: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1920&q=80',
+      title: 'Deep Violet Galaxy & Violet Nebula',
+      author: 'Jeremy Thomas',
+      source: 'Unsplash (Free License)',
+      status: 'active',
+      lastUpdated: Date.now(),
+    }),
+
+    getSystemTelemetry: async () => ({
+      heapUsedMB: 120,
+      heapTotalMB: 280,
+      rssMB: 190,
+      privateBytesMB: 160,
+      gpuRenderer: 'Web Rendering Context',
+      gpuStatus: 'Active',
+      cpuPercent: 2.1,
+      nodeVersion: '20.0.0',
+      electronVersion: '45.1.0',
+      chromeVersion: '133.0.0',
+      sandboxVerified: true,
+      contextIsolationVerified: true,
+    }),
+
+    optimizeMemory: async () => ({
+      success: true,
+      freedMB: 40,
+    }),
+
+    clearCacheAndHistory: async () => {
+      const recordsRemoved = history.length;
+      history = [];
+      notifyHistory();
+      return {
+        success: true,
+        recordsRemoved,
+        cacheCleared: true,
+      };
+    },
+
+    getExtensions: async () => [
+      {
+        id: 'ext-adal-companion',
+        name: 'AdaL AI Companion Assistant',
+        version: '1.0.0',
+        enabled: true,
+        description: 'Autonomous research and verified page understanding assistant',
+      },
+    ],
+
+    getAllArtifacts: async () => [],
+    deleteArtifact: async () => true,
+    openArtifact: async () => true,
+
     // Event Subscriptions
     onTabsUpdated: (callback: (tabs: BrowserTab[]) => void) => {
       tabsListeners.add(callback);
@@ -485,6 +561,11 @@ export function initWebBridgeIfNeeded(): void {
         settingsListeners.delete(callback);
       };
     },
+
+    onLiveWallpaperUpdated: (_callback: (info: any) => void) => () => {},
+
+    onFocusUrlInput: (_callback: () => void) => () => {},
+    onShortcutBookmark: (_callback: (url: string) => void) => () => {},
   };
 
   window.adalNexus = mockApi;

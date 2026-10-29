@@ -51,6 +51,8 @@ const DEFAULT_SHORTCUTS: ShortcutItem[] = [
 
 const DEFAULT_SETTINGS: BrowserSettings = {
   theme: 'dark',
+  themeMode: 'dark-cosmic',
+  backgroundMode: 'cosmic',
   searchEngine: 'google',
   homeUrl: 'adal://newtab',
   shortcuts: DEFAULT_SHORTCUTS,
@@ -75,15 +77,33 @@ export class BrowserStore {
       if (fs.existsSync(this.filePath)) {
         const raw = fs.readFileSync(this.filePath, 'utf8');
         const parsed = JSON.parse(raw);
+        const rawSettings = parsed.settings || {};
+        let themeMode = rawSettings.themeMode;
+        if (!themeMode) {
+          if (rawSettings.backgroundMode === 'live') {
+            themeMode = 'live-wallpaper';
+          } else if (rawSettings.theme === 'light' || rawSettings.backgroundMode === 'white') {
+            themeMode = 'soft-light';
+          } else {
+            themeMode = 'dark-cosmic';
+          }
+        }
+        const theme = themeMode === 'soft-light' ? 'light' : 'dark';
+        const backgroundMode =
+          themeMode === 'soft-light' ? 'white' : themeMode === 'live-wallpaper' ? 'live' : 'cosmic';
+
         return {
           bookmarks: Array.isArray(parsed.bookmarks) ? parsed.bookmarks : [],
           history: Array.isArray(parsed.history) ? parsed.history : [],
           downloads: Array.isArray(parsed.downloads) ? parsed.downloads : [],
           settings: {
             ...DEFAULT_SETTINGS,
-            ...(parsed.settings || {}),
-            shortcuts: Array.isArray(parsed.settings?.shortcuts) && parsed.settings.shortcuts.length > 0
-              ? parsed.settings.shortcuts
+            ...rawSettings,
+            themeMode,
+            theme,
+            backgroundMode,
+            shortcuts: Array.isArray(rawSettings.shortcuts) && rawSettings.shortcuts.length > 0
+              ? rawSettings.shortcuts
               : DEFAULT_SHORTCUTS,
           },
         };
@@ -247,7 +267,38 @@ export class BrowserStore {
   }
 
   saveSettings(newSettings: Partial<BrowserSettings>): BrowserSettings {
-    this.data.settings = { ...this.data.settings, ...newSettings };
+    const updated = { ...newSettings };
+    if (updated.themeMode) {
+      updated.theme = updated.themeMode === 'soft-light' ? 'light' : 'dark';
+      updated.backgroundMode =
+        updated.themeMode === 'soft-light' ? 'white' : updated.themeMode === 'live-wallpaper' ? 'live' : 'cosmic';
+    } else if (updated.backgroundMode) {
+      if (updated.backgroundMode === 'live') {
+        updated.themeMode = 'live-wallpaper';
+        updated.theme = 'dark';
+      } else if (updated.backgroundMode === 'white') {
+        updated.themeMode = 'soft-light';
+        updated.theme = 'light';
+      } else {
+        updated.themeMode = 'dark-cosmic';
+        updated.theme = 'dark';
+      }
+    } else if (updated.theme) {
+      if (updated.theme === 'light') {
+        updated.themeMode = 'soft-light';
+        updated.backgroundMode = 'white';
+      } else {
+        if (this.data.settings.themeMode === 'live-wallpaper') {
+          updated.themeMode = 'live-wallpaper';
+          updated.backgroundMode = 'live';
+        } else {
+          updated.themeMode = 'dark-cosmic';
+          updated.backgroundMode = 'cosmic';
+        }
+      }
+    }
+
+    this.data.settings = { ...this.data.settings, ...updated };
     this.save();
     return { ...this.data.settings };
   }

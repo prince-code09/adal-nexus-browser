@@ -13,6 +13,7 @@ export const IPC_CHANNELS = {
   TAB_GET_ALL: 'tab:get-all',
   TAB_GET_ACTIVE: 'tab:get-active',
   TAB_SET_BOUNDS: 'tab:set-bounds',
+  TAB_SET_VIEW_VISIBLE: 'tab:set-view-visible',
 
   // Navigation
   NAV_NAVIGATE: 'nav:navigate',
@@ -56,6 +57,21 @@ export const IPC_CHANNELS = {
   GET_TASK_DETAILS: 'history:get-details',
   OPEN_ARTIFACT: 'artifacts:open',
   GET_ARTIFACT_CONTENT: 'artifacts:get-content',
+  GET_ALL_ARTIFACTS: 'artifacts:get-all',
+  DELETE_ARTIFACT: 'artifacts:delete',
+
+  // System Telemetry & Maintenance
+  SYSTEM_GET_TELEMETRY: 'system:get-telemetry',
+  SYSTEM_OPTIMIZE_MEMORY: 'system:optimize-memory',
+  SYSTEM_CLEAR_CACHE: 'system:clear-cache',
+
+  // Extensions Management
+  EXTENSIONS_GET_ALL: 'extensions:get-all',
+
+  // Live Wallpaper Management
+  WALLPAPER_GET_CURRENT: 'wallpaper:get-current',
+  WALLPAPER_REFRESH_NOW: 'wallpaper:refresh-now',
+  WALLPAPER_SET_INTERVAL: 'wallpaper:set-interval',
 
   // Push Events to Renderer
   EVENT_TABS_UPDATED: 'event:tabs-updated',
@@ -65,6 +81,9 @@ export const IPC_CHANNELS = {
   EVENT_HISTORY_UPDATED: 'event:history-updated',
   EVENT_BOOKMARKS_UPDATED: 'event:bookmarks-updated',
   EVENT_SETTINGS_UPDATED: 'event:settings-updated',
+  EVENT_WALLPAPER_UPDATED: 'event:wallpaper-updated',
+  EVENT_SHORTCUT_FOCUS_URL: 'event:shortcut-focus-url',
+  EVENT_SHORTCUT_BOOKMARK: 'event:shortcut-bookmark',
 
   // Legacy Agent Events
   EVENT_PLAN_UPDATED: 'event:plan-updated',
