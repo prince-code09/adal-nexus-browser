@@ -6,7 +6,7 @@ import * as dotenv from 'dotenv';
 import { IPC_CHANNELS } from '../shared/ipc-channels';
 import type { AppSettings, BrowserBounds, BrowserSettings } from '../shared/types';
 import { BrowserStore } from './storage/browser-store';
-import { TabManager } from './browser/tab-manager';
+import { TabManager, ADAL_SESSION_PARTITION } from './browser/tab-manager';
 import { DownloadManager } from './browser/download-manager';
 import { WallpaperService } from './services/wallpaper-service';
 import { ArtifactService } from './services/artifact-service';
@@ -496,13 +496,12 @@ function registerIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.HISTORY_CLEAR, async () => {
     browserStore.clearHistory();
     try {
-      // Clear persistent Chromium session data and cache
-      await session.defaultSession.clearStorageData({
-        storages: ['cookies', 'localstorage', 'cachestorage', 'serviceworkers', 'indexdb'],
-      });
+      // Clear HTTP disk cache only; strictly preserve user login cookies and session data
       await session.defaultSession.clearCache();
+      const adalSession = session.fromPartition(ADAL_SESSION_PARTITION);
+      await adalSession.clearCache();
     } catch (err) {
-      console.warn('[Main] Error clearing session storage data:', err);
+      console.warn('[Main] Error clearing session cache:', err);
     }
     mainWindow?.webContents.send(IPC_CHANNELS.EVENT_HISTORY_UPDATED, []);
     return true;
@@ -574,7 +573,7 @@ function registerIpcHandlers(): void {
     return currentSettings;
   });
 
-  ipcMain.handle(IPC_CHANNELS.START_TASK, async (_event, goal: string) => {
+  ipcMain.handle(IPC_CHANNELS.START_TASK, async (_event, goal: string, context?: any) => {
     if (!goal || typeof goal !== 'string') {
       throw new Error('Task goal must be a non-empty string');
     }
@@ -589,7 +588,7 @@ function registerIpcHandlers(): void {
     });
 
     try {
-      const plan = await planner.createPlan(goal);
+      const plan = await planner.createPlan(goal, context);
       mainWindow?.webContents.send(IPC_CHANNELS.EVENT_PLAN_UPDATED, plan);
 
       // Launch execution in background without blocking IPC invoke
@@ -746,6 +745,8 @@ function registerIpcHandlers(): void {
       const recordsRemoved = browserStore.getHistory().length;
       browserStore.clearHistory();
       await session.defaultSession.clearCache();
+      const adalSession = session.fromPartition(ADAL_SESSION_PARTITION);
+      await adalSession.clearCache();
 
       // Notify renderer of cleared history
       mainWindow?.webContents.send(IPC_CHANNELS.EVENT_HISTORY_UPDATED, []);
@@ -820,8 +821,32 @@ app.whenReady().then(() => {
   verifyStorageAndCache();
   printStartupDiagnostics();
 
-  // Ensure Chromium's default persistent session uses modern desktop Chrome User Agent
+  // Ensure Chromium's default persistent session and profile session use modern desktop Chrome User Agent
   session.defaultSession.setUserAgent(CHROME_DESKTOP_UA);
+
+  // Configure explicit permission request and check handlers for media (microphone/audio)
+  const setupMediaPermissions = (targetSession: Electron.Session) => {
+    targetSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+      if (permission === 'media') {
+        callback(true);
+        return;
+      }
+      callback(true);
+    });
+    targetSession.setPermissionCheckHandler((_webContents, permission) => {
+      if (permission === 'media') {
+        return true;
+      }
+      return true;
+    });
+  };
+
+  setupMediaPermissions(session.defaultSession);
+  try {
+    const adalSession = session.fromPartition(ADAL_SESSION_PARTITION);
+    adalSession.setUserAgent(CHROME_DESKTOP_UA);
+    setupMediaPermissions(adalSession);
+  } catch {}
 
   initializeServices();
   registerIpcHandlers();
@@ -841,8 +866,12 @@ app.on('window-all-closed', () => {
   }
 });
 
-app.on('before-quit', () => {
+app.on('before-quit', async () => {
   logDiagnostic('Application before-quit event received.');
+  try {
+    const adalSession = session.fromPartition(ADAL_SESSION_PARTITION);
+    await adalSession.cookies.flushStore();
+  } catch {}
   try {
     wsService?.stop();
   } catch {}

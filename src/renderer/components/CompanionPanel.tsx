@@ -20,6 +20,9 @@ import {
   ExternalLink,
   Plus,
   Trash2,
+  Mic,
+  MicOff,
+  Paperclip,
 } from 'lucide-react';
 import type {
   ExecutionPlan,
@@ -30,12 +33,13 @@ import type {
   VerificationStatus,
   ArtifactItem,
   ChatMessage,
+  AttachedImage,
 } from '../../shared/types';
 import { VerificationBadge } from './VerificationBadge';
 
 interface CompanionPanelProps {
   currentGoal: string;
-  onStartTask: (goal: string) => void;
+  onStartTask: (goal: string, attachedImage?: AttachedImage) => void;
   onCancelTask: () => void;
   onNewChat?: () => void;
   taskStatus: TaskStatus;
@@ -134,10 +138,138 @@ export const CompanionPanel: React.FC<CompanionPanelProps> = ({
   const [inputText, setInputText] = useState('');
   const [activeTab, setActiveTab] = useState<'chat' | 'plan' | 'logs' | 'artifacts'>('chat');
   const [deletingPath, setDeletingPath] = useState<string | null>(null);
+  const [isListening, setIsListening] = useState(false);
+  const [speechLang, setSpeechLang] = useState<'en-IN' | 'hi-IN' | 'hinglish'>('en-IN');
+  const [speechError, setSpeechError] = useState<string | null>(null);
+  const [attachedImage, setAttachedImage] = useState<AttachedImage | null>(null);
+
   const chatBottomRef = useRef<HTMLDivElement>(null);
   const logEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const recognitionRef = useRef<any>(null);
   const isLight = theme === 'light';
+
+  // Voice Input via Chromium Web Speech API with Device Verification & Fallback
+  const startVoiceInput = async () => {
+    setSpeechError(null);
+
+    // Verify microphone hardware access
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach((track) => track.stop());
+      } catch (mediaErr: any) {
+        setIsListening(false);
+        if (mediaErr.name === 'NotAllowedError' || mediaErr.name === 'PermissionDeniedError') {
+          setSpeechError('Microphone permission was denied. Please allow microphone access in Windows or app settings.');
+          return;
+        }
+        if (mediaErr.name === 'NotFoundError' || mediaErr.name === 'DevicesNotFoundError') {
+          setSpeechError('No microphone detected. Please connect an audio input device.');
+          return;
+        }
+      }
+    }
+
+    const SpeechRecognition =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      setSpeechError('Speech recognition is not supported in this Chromium/Electron build. Please use typed input.');
+      return;
+    }
+
+    try {
+      if (recognitionRef.current) {
+        recognitionRef.current.abort();
+      }
+
+      const recognition = new SpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.lang = speechLang === 'hinglish' ? 'hi-IN' : speechLang;
+
+      recognition.onstart = () => {
+        setIsListening(true);
+      };
+
+      recognition.onresult = (event: any) => {
+        const transcript = event.results?.[0]?.[0]?.transcript;
+        if (transcript) {
+          setInputText((prev) => (prev ? `${prev} ${transcript}` : transcript));
+        }
+      };
+
+      recognition.onerror = (event: any) => {
+        setIsListening(false);
+        const err = event.error || '';
+        if (err === 'not-allowed') {
+          setSpeechError('Microphone access was denied. Please grant microphone permissions.');
+        } else if (err === 'no-speech') {
+          setSpeechError('No speech detected. Please speak clearly into your microphone.');
+        } else if (err === 'network') {
+          setSpeechError('Speech network service unavailable: Chromium cloud speech was unreachable. You can retry or use typed input below.');
+        } else if (err === 'aborted') {
+          // User aborted
+        } else {
+          setSpeechError(`Voice input error (${err || 'capture failed'}). Please retry or use typed input below.`);
+        }
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+      };
+
+      recognitionRef.current = recognition;
+      recognition.start();
+    } catch (err: any) {
+      setIsListening(false);
+      setSpeechError(`Voice recognition unavailable: ${err.message}. Please use typed input.`);
+    }
+  };
+
+  const stopVoiceInput = () => {
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch {}
+    }
+    setIsListening(false);
+  };
+
+  // Image Attachment Handling
+  const handleFileSelect = (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file (PNG, JPG, WebP).');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = e.target?.result as string;
+      const electronPath = (file as any).path || '';
+      setAttachedImage({
+        name: file.name,
+        dataUrl,
+        path: electronPath,
+        size: file.size,
+        type: file.type,
+      });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      handleFileSelect(e.dataTransfer.files[0]);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
 
   // Auto-scroll chat to bottom when messages update
   useEffect(() => {
@@ -161,10 +293,12 @@ export const CompanionPanel: React.FC<CompanionPanelProps> = ({
   const handleSubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const trimmed = inputText.trim();
-    if (!trimmed || isBusy) return;
+    if ((!trimmed && !attachedImage) || isBusy) return;
 
-    onStartTask(trimmed);
+    const finalGoal = trimmed || (attachedImage ? `Is image ke liye LinkedIn description likho: ${attachedImage.name}` : '');
+    onStartTask(finalGoal, attachedImage || undefined);
     setInputText('');
+    setAttachedImage(null);
     setActiveTab('chat');
   };
 
@@ -275,33 +409,91 @@ export const CompanionPanel: React.FC<CompanionPanelProps> = ({
               <span className="text-xs font-bold text-amber-300 uppercase tracking-wide">
                 Approval Required
               </span>
-              <p className="text-xs text-amber-200 mt-1 font-medium">{pendingApproval.title}</p>
-              <p className="text-[11px] text-amber-300/80 mt-1">{pendingApproval.description}</p>
-              {pendingApproval.consequences.length > 0 && (
+              <p className="text-xs text-amber-200 mt-1 font-semibold">{pendingApproval.title}</p>
+              <p className="text-[11px] text-amber-100/90 mt-1 leading-relaxed whitespace-pre-wrap">
+                {pendingApproval.description}
+              </p>
+
+              {pendingApproval.whyRequired ? (
+                <div className="mt-2 text-[11px] leading-relaxed bg-amber-950/40 p-2.5 rounded-lg border border-amber-500/30 space-y-1">
+                  <p>
+                    <strong className="text-amber-300 font-semibold">Why permission is required:</strong>{' '}
+                    <span className="text-amber-100/90">{pendingApproval.whyRequired}</span>
+                  </p>
+                  {pendingApproval.targetResource && (
+                    <p>
+                      <strong className="text-amber-300 font-semibold">Resource affected:</strong>{' '}
+                      <span className="text-amber-100/90">{pendingApproval.targetResource}</span>
+                    </p>
+                  )}
+                  {pendingApproval.ifAllowed && (
+                    <p>
+                      <strong className="text-emerald-400 font-semibold">If you allow:</strong>{' '}
+                      <span className="text-emerald-200/90">{pendingApproval.ifAllowed}</span>
+                    </p>
+                  )}
+                  {pendingApproval.ifDenied && (
+                    <p>
+                      <strong className="text-rose-400 font-semibold">If you deny:</strong>{' '}
+                      <span className="text-rose-200/90">{pendingApproval.ifDenied}</span>
+                    </p>
+                  )}
+                </div>
+              ) : pendingApproval.consequences.length > 0 ? (
                 <ul className="text-[10px] text-amber-300/70 list-disc list-inside mt-1 space-y-0.5">
                   {pendingApproval.consequences.map((c, i) => (
                     <li key={i}>{c}</li>
                   ))}
                 </ul>
+              ) : null}
+
+              {pendingApproval.attachedImage && (
+                <div className="mt-2.5 p-2 rounded-lg bg-black/40 border border-amber-500/30 flex items-center gap-2.5">
+                  {pendingApproval.attachedImage.dataUrl && (
+                    <img
+                      src={pendingApproval.attachedImage.dataUrl}
+                      alt={pendingApproval.attachedImage.name}
+                      className="w-12 h-12 object-cover rounded-md border border-white/20 shrink-0"
+                    />
+                  )}
+                  <div className="text-[11px] overflow-hidden">
+                    <div className="font-semibold text-amber-200 truncate">
+                      📎 {pendingApproval.attachedImage.name}
+                    </div>
+                    {pendingApproval.attachedImage.size && (
+                      <div className="text-[10px] text-amber-300/70">
+                        Size: {Math.round(pendingApproval.attachedImage.size / 1024)} KB
+                      </div>
+                    )}
+                    {pendingApproval.attachedImage.path && (
+                      <div className="text-[9px] text-slate-400 font-mono truncate" title={pendingApproval.attachedImage.path}>
+                        {pendingApproval.attachedImage.path}
+                      </div>
+                    )}
+                  </div>
+                </div>
               )}
-              <div className="flex items-center gap-2 mt-2.5">
+
+              <div className="flex items-center gap-2 mt-3">
                 <button
                   type="button"
                   onClick={() => onApprovalResponse(pendingApproval.id, true)}
-                  className="px-3 py-1 text-xs rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold transition-colors cursor-pointer shadow-sm"
+                  className="px-3.5 py-1.5 text-xs rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold transition-colors cursor-pointer shadow-sm flex items-center gap-1.5"
                 >
-                  Approve Action
+                  <CheckCircle size={13} />
+                  Allow
                 </button>
                 <button
                   type="button"
                   onClick={() => onApprovalResponse(pendingApproval.id, false)}
-                  className={`px-3 py-1 text-xs rounded-lg border font-medium transition-colors cursor-pointer ${
+                  className={`px-3.5 py-1.5 text-xs rounded-lg border font-medium transition-colors cursor-pointer flex items-center gap-1.5 ${
                     isLight
                       ? 'bg-white border-slate-300 hover:bg-slate-100 text-slate-700'
                       : 'bg-black/40 border-white/20 hover:bg-white/10 text-slate-300'
                   }`}
                 >
-                  Reject &amp; Skip
+                  <X size={13} />
+                  Deny
                 </button>
               </div>
             </div>
@@ -403,6 +595,23 @@ export const CompanionPanel: React.FC<CompanionPanelProps> = ({
                               : 'bg-violet-600 text-white rounded-br-xs shadow-md shadow-violet-900/30'
                           }`}
                         >
+                          {msg.attachedImage && (
+                            <div className="mb-2 p-1.5 rounded-lg bg-black/25 border border-white/20 flex items-center gap-2">
+                              {msg.attachedImage.dataUrl && (
+                                <img
+                                  src={msg.attachedImage.dataUrl}
+                                  alt={msg.attachedImage.name}
+                                  className="w-10 h-10 object-cover rounded-md border border-white/20 shrink-0"
+                                />
+                              )}
+                              <div className="text-[10px] overflow-hidden">
+                                <div className="font-semibold truncate">📎 {msg.attachedImage.name}</div>
+                                {msg.attachedImage.size && (
+                                  <div className="text-white/70">{Math.round(msg.attachedImage.size / 1024)} KB</div>
+                                )}
+                              </div>
+                            </div>
+                          )}
                           <p className="whitespace-pre-wrap break-words">{msg.content}</p>
                           <span className="block text-[9px] mt-1 text-white/70 text-right">
                             {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -897,7 +1106,111 @@ export const CompanionPanel: React.FC<CompanionPanelProps> = ({
         className={`p-3 border-t shrink-0 ${
           isLight ? 'border-slate-200 bg-slate-50/90' : 'border-white/10 bg-[#090d18]'
         }`}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
       >
+        {/* Hidden File Input for Image Attachments */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/png,image/jpeg,image/webp,image/gif"
+          className="hidden"
+          onChange={(e) => {
+            if (e.target.files && e.target.files[0]) {
+              handleFileSelect(e.target.files[0]);
+              e.target.value = '';
+            }
+          }}
+        />
+
+        {/* Speech Error Banner with Retry and Typed Fallback */}
+        {speechError && (
+          <div className="mb-2 p-2 rounded-lg bg-rose-500/20 border border-rose-500/40 text-rose-200 text-[11px] flex flex-col gap-1.5 shadow-sm">
+            <div className="flex items-start justify-between gap-1">
+              <span>{speechError}</span>
+              <button
+                type="button"
+                onClick={() => setSpeechError(null)}
+                className="text-rose-300 hover:text-white cursor-pointer p-0.5"
+                title="Dismiss"
+              >
+                <X size={12} />
+              </button>
+            </div>
+            <div className="flex items-center gap-2 pt-1 border-t border-rose-500/20">
+              <button
+                type="button"
+                onClick={startVoiceInput}
+                className="px-2 py-0.5 rounded bg-rose-600/50 hover:bg-rose-600 text-white font-medium text-[10px] transition-colors cursor-pointer"
+              >
+                Retry Voice
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSpeechError(null);
+                  inputRef.current?.focus();
+                }}
+                className="px-2 py-0.5 rounded bg-slate-700/70 hover:bg-slate-700 text-slate-200 text-[10px] transition-colors cursor-pointer"
+              >
+                Use Typed Input
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Speech Listening Active Banner */}
+        {isListening && (
+          <div className="mb-2 p-1.5 px-2.5 rounded-lg bg-red-600/20 border border-red-500/40 text-red-200 text-[11px] flex items-center justify-between animate-pulse">
+            <span className="flex items-center gap-2 font-semibold">
+              <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping" />
+              Listening ({speechLang === 'hi-IN' ? 'Hindi / हिंदी' : speechLang === 'hinglish' ? 'Hinglish / हिंग्लिश' : 'English'})... Speak now
+            </span>
+            <button
+              type="button"
+              onClick={stopVoiceInput}
+              className="px-2 py-0.5 rounded bg-red-600 hover:bg-red-500 text-white text-[10px] font-bold cursor-pointer"
+            >
+              Done
+            </button>
+          </div>
+        )}
+
+        {/* Attached Image Thumbnail Preview Pill */}
+        {attachedImage && (
+          <div className="mb-2 p-1.5 px-2 rounded-xl bg-violet-600/15 border border-violet-500/35 flex items-center justify-between gap-2 shadow-sm">
+            <div className="flex items-center gap-2 overflow-hidden">
+              {attachedImage.dataUrl ? (
+                <img
+                  src={attachedImage.dataUrl}
+                  alt={attachedImage.name}
+                  className="w-9 h-9 rounded-lg object-cover border border-violet-400/40 shrink-0"
+                />
+              ) : (
+                <div className="w-9 h-9 rounded-lg bg-violet-700/30 flex items-center justify-center text-violet-300 shrink-0">
+                  <Paperclip size={16} />
+                </div>
+              )}
+              <div className="text-[11px] overflow-hidden">
+                <span className="font-semibold text-violet-200 truncate block">
+                  📎 {attachedImage.name}
+                </span>
+                <span className="text-[10px] text-slate-400 block">
+                  {attachedImage.size ? `${Math.round(attachedImage.size / 1024)} KB` : 'Image ready'} • Attached for LinkedIn / Caption
+                </span>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAttachedImage(null)}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer shrink-0"
+              title="Remove attached image"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="flex flex-col gap-2">
           <div className="relative">
             <textarea
@@ -905,7 +1218,11 @@ export const CompanionPanel: React.FC<CompanionPanelProps> = ({
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Ask AdaL Agent or type a research goal (Enter to run)..."
+              placeholder={
+                attachedImage
+                  ? "Image attached. Ask for a caption or type: 'Post this photo on LinkedIn'..."
+                  : "Ask AdaL Agent, type a goal, or click mic to speak..."
+              }
               rows={2}
               disabled={isBusy}
               className={`w-full text-xs p-2.5 pr-10 rounded-xl border outline-none resize-none transition-all ${
@@ -919,7 +1236,7 @@ export const CompanionPanel: React.FC<CompanionPanelProps> = ({
               <button
                 type="button"
                 onClick={() => setInputText('')}
-                className="absolute top-2.5 right-2 text-slate-400 hover:text-slate-200 transition-colors"
+                className="absolute top-2.5 right-2 text-slate-400 hover:text-slate-200 transition-colors cursor-pointer"
                 title="Clear input"
               >
                 <X size={13} />
@@ -927,26 +1244,86 @@ export const CompanionPanel: React.FC<CompanionPanelProps> = ({
             )}
           </div>
 
-          <div className="flex items-center justify-end gap-2">
-            {isBusy ? (
+          <div className="flex items-center justify-between gap-2">
+            {/* Left Controls: Attach Image & Voice Input */}
+            <div className="flex items-center gap-1.5">
               <button
                 type="button"
-                onClick={onCancelTask}
-                className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-rose-600/20 text-rose-300 hover:bg-rose-600/30 border border-rose-500/30 flex items-center gap-1.5 transition-colors cursor-pointer"
+                disabled={isBusy}
+                onClick={() => fileInputRef.current?.click()}
+                className={`p-1.5 rounded-lg border transition-all cursor-pointer flex items-center gap-1 text-[11px] ${
+                  attachedImage
+                    ? 'bg-violet-600/30 border-violet-500 text-violet-200'
+                    : isLight
+                    ? 'border-slate-300 hover:bg-slate-200 text-slate-600'
+                    : 'border-white/10 hover:bg-white/10 text-slate-300'
+                } disabled:opacity-40 disabled:cursor-not-allowed`}
+                title="Attach an image (PNG, JPG, WebP) or drag and drop"
               >
-                <StopCircle size={13} />
-                Cancel Task
+                <Paperclip size={13} />
+                <span className="hidden sm:inline text-[10px]">Image</span>
               </button>
-            ) : (
+
               <button
-                type="submit"
-                disabled={!inputText.trim()}
-                className="px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white flex items-center gap-1.5 transition-all shadow-md shadow-violet-600/30 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                type="button"
+                disabled={isBusy}
+                onClick={isListening ? stopVoiceInput : startVoiceInput}
+                className={`p-1.5 rounded-lg border transition-all cursor-pointer flex items-center gap-1 text-[11px] ${
+                  isListening
+                    ? 'bg-red-600 text-white border-red-500 shadow-md shadow-red-600/40 animate-pulse'
+                    : isLight
+                    ? 'border-slate-300 hover:bg-slate-200 text-slate-600'
+                    : 'border-white/10 hover:bg-white/10 text-slate-300'
+                } disabled:opacity-40 disabled:cursor-not-allowed`}
+                title={isListening ? 'Stop voice recording' : `Voice Input (${speechLang === 'hi-IN' ? 'Hindi' : speechLang === 'hinglish' ? 'Hinglish' : 'English'})`}
               >
-                <Send size={12} />
-                Send
+                {isListening ? <MicOff size={13} /> : <Mic size={13} />}
+                <span className="text-[10px] font-semibold">{speechLang === 'hi-IN' ? 'HI' : speechLang === 'hinglish' ? 'HING' : 'EN'}</span>
               </button>
-            )}
+
+              <button
+                type="button"
+                disabled={isBusy || isListening}
+                onClick={() =>
+                  setSpeechLang((prev) =>
+                    prev === 'en-IN' ? 'hi-IN' : prev === 'hi-IN' ? 'hinglish' : 'en-IN'
+                  )
+                }
+                className={`px-1.5 py-1 rounded text-[10px] font-bold border transition-colors cursor-pointer ${
+                  speechLang === 'hi-IN'
+                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                    : speechLang === 'hinglish'
+                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                    : 'bg-violet-500/20 text-violet-300 border-violet-500/40'
+                } disabled:opacity-40`}
+                title="Switch voice language between English, Hindi, and Hinglish"
+              >
+                {speechLang === 'hi-IN' ? 'हिंदी' : speechLang === 'hinglish' ? 'हिंग्लिश' : 'Eng'}
+              </button>
+            </div>
+
+            {/* Right Controls: Send / Cancel */}
+            <div className="flex items-center gap-2">
+              {isBusy ? (
+                <button
+                  type="button"
+                  onClick={onCancelTask}
+                  className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-rose-600/20 text-rose-300 hover:bg-rose-600/30 border border-rose-500/30 flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <StopCircle size={13} />
+                  Cancel Task
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  disabled={!inputText.trim() && !attachedImage}
+                  className="px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white flex items-center gap-1.5 transition-all shadow-md shadow-violet-600/30 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                >
+                  <Send size={12} />
+                  Send
+                </button>
+              )}
+            </div>
           </div>
         </form>
       </div>

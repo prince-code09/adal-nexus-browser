@@ -1,6 +1,6 @@
 import type { ExecutionPlan, AppSettings } from '../../shared/types';
 import type { ToolRegistry } from './tools/registry';
-import type { AIProviderAdapter } from './adapters/ai-adapter';
+import type { AIProviderAdapter, TaskContext } from './adapters/ai-adapter';
 import { MockLocalAIAdapter } from './adapters/mock-adapter';
 import { GeminiAIAdapter } from './adapters/gemini-adapter';
 import { OpenAICompatibleAdapter } from './adapters/openai-adapter';
@@ -51,23 +51,23 @@ export class TaskPlanner {
     return this.mockAdapter;
   }
 
-  public async createPlan(goal: string): Promise<ExecutionPlan> {
+  public async createPlan(goal: string, context?: TaskContext): Promise<ExecutionPlan> {
     const adapter = this.getAdapter();
     const availableTools = this.toolRegistry.getAllTools();
 
     let plan: ExecutionPlan;
     try {
-      plan = await adapter.generatePlan(goal, availableTools);
+      plan = await adapter.generatePlan(goal, availableTools, context);
     } catch (err: any) {
       console.warn(`[TaskPlanner] Primary adapter (${adapter.providerName}) failed: ${err.message}. Falling back to deterministic local planner.`);
-      plan = await this.mockAdapter.generatePlan(goal, availableTools);
+      plan = await this.mockAdapter.generatePlan(goal, availableTools, context);
     }
 
     // Validate plan schema strictly with Zod
     const validation = validateExecutionPlan(plan);
     if (!validation.success) {
       console.warn('[TaskPlanner] Plan validation warning, repairing with local template:', validation.error);
-      plan = await this.mockAdapter.generatePlan(goal, availableTools);
+      plan = await this.mockAdapter.generatePlan(goal, availableTools, context);
     }
 
     return plan;

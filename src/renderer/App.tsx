@@ -11,6 +11,7 @@ import type {
   ChatMessage,
   TabAgentWorkspace,
   ArtifactItem,
+  AttachedImage,
 } from '../shared/types';
 import { TitleBar } from './components/TitleBar';
 import { NavigationToolbar } from './components/NavigationToolbar';
@@ -323,50 +324,197 @@ export const App: React.FC = () => {
               prev.currentGoal
             );
 
-          const findingsList: string[] = [];
-          if (data.taskRecord?.findings && Array.isArray(data.taskRecord.findings)) {
-            data.taskRecord.findings.forEach((f: any) => {
-              const name = f.company_name || f.name || f.title || f.Company || f.company;
-              const product = f.product || f.Product || f.description || f.category;
-              const pricing = f.pricing || f.price || f.Pricing || f.PricingModel;
-              const url = f.source_url || f.url || f.link || f.source;
-              if (name) {
-                const parts = [name];
-                if (product) parts.push(product);
-                if (pricing) parts.push(`Pricing: ${pricing}`);
-                if (url) parts.push(`(${url})`);
-                findingsList.push(parts.join(' — '));
-              } else if (typeof f === 'string') {
-                findingsList.push(f);
-              }
+          const planSteps = data.taskRecord?.plan?.steps || prev.plan?.steps || [];
+          const hasChatResponse = planSteps.some((s) => s.tool === 'chat_response');
+          const hasOpenTab = planSteps.some((s) => s.tool === 'browser_open_tab' || s.tool === 'browser_navigate');
+          const hasLinkedInPost = planSteps.some((s) => s.tool === 'browser_linkedin_post');
+          const hasYouTubePlay = planSteps.some((s) => s.tool === 'browser_youtube_play');
+          const hasVisualMatch = planSteps.some((s) => s.tool === 'browser_visual_match');
+          const hasNotesGallery = planSteps.some(
+            (s) => s.tool === 'notes_gallery_search_and_open' || s.tool === 'notes_gallery_open'
+          );
+          const hasPdf =
+            data.taskRecord?.pdfReportPath ||
+            updatedArtifacts.some((a) => a.path?.endsWith('.pdf'));
+
+          // Mode A: Pure conversational response (no tabs, no tables, no PDF cards)
+          if (
+            hasChatResponse ||
+            (planSteps.length <= 1 &&
+              !hasOpenTab &&
+              !hasLinkedInPost &&
+              !hasYouTubePlay &&
+              !hasNotesGallery &&
+              !hasPdf &&
+              !data.taskRecord?.findings?.length)
+          ) {
+            const answer =
+              data.taskRecord?.resultSummary ||
+              data.taskRecord?.plan?.summary ||
+              'Response completed.';
+            nextMessages.push({
+              id: `msg-done-${Date.now()}`,
+              sender: 'agent',
+              content: answer,
+              timestamp: Date.now(),
+              status: 'success',
+              plan: data.taskRecord?.plan || prev.plan || undefined,
+              artifacts: [],
+              verificationStatus: data.verificationStatus,
             });
           }
+          // Mode B: Explicit Website Open
+          else if (hasOpenTab && !hasLinkedInPost && !hasYouTubePlay && !hasPdf) {
+            const confirmMsg =
+              data.taskRecord?.resultSummary ||
+              (isHi
+                ? 'वेबसाइट आपके सक्रिय ब्राउज़र टैब में खोल दी गई है।'
+                : isHinglish
+                ? 'Website aapke active browser tab me open kar di gayi hai.'
+                : 'Target website has been opened in your active browser tab.');
 
-          const pdfPath =
-            data.taskRecord?.pdfReportPath ||
-            updatedArtifacts.find((a) => a.path?.endsWith('.pdf'))?.path;
+            nextMessages.push({
+              id: `msg-done-${Date.now()}`,
+              sender: 'agent',
+              content: confirmMsg,
+              timestamp: Date.now(),
+              status: 'success',
+              plan: data.taskRecord?.plan || prev.plan || undefined,
+              artifacts: [],
+              verificationStatus: data.verificationStatus,
+            });
+          }
+          // Mode: YouTube Playback
+          else if (hasYouTubePlay && !hasPdf) {
+            const playMsg =
+              data.taskRecord?.resultSummary ||
+              (isHi
+                ? 'यूट्यूब सक्रिय ब्राउज़र टैब में खोल दिया गया है और वीडियो प्लेबैक प्रारंभ कर दिया गया है।'
+                : isHinglish
+                ? 'YouTube open karke video/playlist playback shuru kar diya gaya hai.'
+                : 'YouTube playback initiated in active browser tab.');
 
-          const completionContent = isHi
-            ? `शोध कार्य सफलतापूर्वक पूर्ण हुआ और सभी निष्कर्ष सत्यापित कर लिए गए हैं। मुख्य निष्कर्ष और सारांश नीचे दिए गए हैं:`
-            : isHinglish
-            ? `Research successfully complete ho gaya hai aur findings verify ho chuki hain! Neeche verified details aur consolidated report available hai:`
-            : `Research successfully completed and independently verified! Key findings, pricing details, and citations are summarized below:`;
+            nextMessages.push({
+              id: `msg-done-${Date.now()}`,
+              sender: 'agent',
+              content: playMsg,
+              timestamp: Date.now(),
+              status: 'success',
+              plan: data.taskRecord?.plan || prev.plan || undefined,
+              artifacts: [],
+              verificationStatus: data.verificationStatus,
+            });
+          }
+          // Mode: Visual Image Matching
+          else if (hasVisualMatch && !hasPdf) {
+            const visualMsg =
+              data.taskRecord?.resultSummary ||
+              (isHi
+                ? 'छवि विश्लेषण और दृश्य मिलान खोज पूरी हो गई है। परिणाम आपके ब्राउज़र टैब में प्रदर्शित किए गए हैं।'
+                : isHinglish
+                ? 'Uploaded image ke visual features analyze karke visually matching images aapke browser tab me display kar di gayi hain.'
+                : 'Visual image analysis completed. Visually matching results and web sources have been opened in your browser tab.');
 
-          nextMessages.push({
-            id: `msg-done-${Date.now()}`,
-            sender: 'agent',
-            content: completionContent,
-            timestamp: Date.now(),
-            status: 'success',
-            plan: data.taskRecord?.plan || prev.plan || undefined,
-            artifacts: updatedArtifacts,
-            verificationStatus: data.verificationStatus,
-            keyFindings: findingsList.length > 0 ? findingsList : undefined,
-            findingsData: data.taskRecord?.findings || undefined,
-            conclusion: data.taskRecord?.resultSummary || undefined,
-            pdfPath,
-          });
-          refreshArtifacts();
+            nextMessages.push({
+              id: `msg-done-${Date.now()}`,
+              sender: 'agent',
+              content: visualMsg,
+              timestamp: Date.now(),
+              status: 'success',
+              plan: data.taskRecord?.plan || prev.plan || undefined,
+              artifacts: [],
+              verificationStatus: data.verificationStatus,
+            });
+          }
+          // Mode: Notes Gallery / PYQs
+          else if (hasNotesGallery && !hasPdf) {
+            const notesMsg =
+              data.taskRecord?.resultSummary ||
+              (isHi
+                ? 'नोट्स गैलरी खोज पूरी हो गई है।'
+                : isHinglish
+                ? 'Notes Gallery search complete ho gayi hai.'
+                : 'Notes Gallery search completed.');
+
+            nextMessages.push({
+              id: `msg-done-${Date.now()}`,
+              sender: 'agent',
+              content: notesMsg,
+              timestamp: Date.now(),
+              status: 'success',
+              plan: data.taskRecord?.plan || prev.plan || undefined,
+              artifacts: [],
+              verificationStatus: data.verificationStatus,
+            });
+          }
+          // Mode C: Explicit Website Action (LinkedIn post, etc.)
+          else if (hasLinkedInPost && !hasPdf) {
+            const actionMsg =
+              data.taskRecord?.resultSummary ||
+              (isHi
+                ? 'लिंक्डइन पोस्ट कार्य सफलतापूर्वक निष्पादित किया गया।'
+                : isHinglish
+                ? 'LinkedIn post action successfully execute ho gaya.'
+                : 'LinkedIn post action successfully executed.');
+
+            nextMessages.push({
+              id: `msg-done-${Date.now()}`,
+              sender: 'agent',
+              content: actionMsg,
+              timestamp: Date.now(),
+              status: 'success',
+              plan: data.taskRecord?.plan || prev.plan || undefined,
+              artifacts: [],
+              verificationStatus: data.verificationStatus,
+            });
+          }
+          // Mode D: Multi-step Research with PDF deliverables
+          else {
+            const findingsList: string[] = [];
+            if (data.taskRecord?.findings && Array.isArray(data.taskRecord.findings)) {
+              data.taskRecord.findings.forEach((f: any) => {
+                const name = f.company_name || f.name || f.title || f.Company || f.company;
+                const product = f.product || f.Product || f.description || f.category;
+                const pricing = f.pricing || f.price || f.Pricing || f.PricingModel;
+                const url = f.source_url || f.url || f.link || f.source;
+                if (name) {
+                  const parts = [name];
+                  if (product) parts.push(product);
+                  if (pricing) parts.push(`Pricing: ${pricing}`);
+                  if (url) parts.push(`(${url})`);
+                  findingsList.push(parts.join(' — '));
+                } else if (typeof f === 'string') {
+                  findingsList.push(f);
+                }
+              });
+            }
+
+            const pdfPath =
+              data.taskRecord?.pdfReportPath ||
+              updatedArtifacts.find((a) => a.path?.endsWith('.pdf'))?.path;
+
+            const completionContent = isHi
+              ? `शोध कार्य सफलतापूर्वक पूर्ण हुआ और सभी निष्कर्ष सत्यापित कर लिए गए हैं। मुख्य निष्कर्ष और सारांश नीचे दिए गए हैं:`
+              : isHinglish
+              ? `Research successfully complete ho gaya hai aur findings verify ho chuki hain! Neeche verified details aur consolidated report available hai:`
+              : `Research successfully completed and independently verified! Key findings, pricing details, and citations are summarized below:`;
+
+            nextMessages.push({
+              id: `msg-done-${Date.now()}`,
+              sender: 'agent',
+              content: completionContent,
+              timestamp: Date.now(),
+              status: 'success',
+              plan: data.taskRecord?.plan || prev.plan || undefined,
+              artifacts: updatedArtifacts,
+              verificationStatus: data.verificationStatus,
+              keyFindings: findingsList.length > 0 ? findingsList : undefined,
+              findingsData: data.taskRecord?.findings || undefined,
+              conclusion: data.taskRecord?.resultSummary || undefined,
+              pdfPath,
+            });
+            refreshArtifacts();
+          }
         } else if (data.status === 'failed' && prev.taskStatus !== 'failed') {
           const isHi = /[\u0900-\u097F]/.test(prev.currentGoal);
           const isHinglish =
@@ -688,7 +836,7 @@ export const App: React.FC = () => {
   };
 
   // Agent Actions
-  const handleStartTask = async (goal: string) => {
+  const handleStartTask = async (goal: string, attachedImage?: AttachedImage) => {
     const currentTabId = activeTab?.id || 'default';
 
     // Detect language
@@ -698,17 +846,87 @@ export const App: React.FC = () => {
         goal
       );
 
-    const ackContent = isHi
-      ? `नमस्ते! मैंने आपका निर्देश प्राप्त कर लिया है: "${goal}"। मैं योजना तैयार कर रहा हूँ और ब्राउज़र ऑटोमेशन शुरू कर रहा हूँ...`
-      : isHinglish
-      ? `Task samajh gaya hoon: "${goal}"। Plan create karke Playwright se target websites research kar raha hoon...`
-      : `Understood your research goal: "${goal}". Preparing execution plan and initiating browser automation...`;
+    const lower = goal.toLowerCase();
+    const isInformational =
+      lower.startsWith('what is') ||
+      lower.startsWith('who is') ||
+      lower.startsWith('how to') ||
+      lower.startsWith('how do') ||
+      lower.startsWith('which ') ||
+      lower.startsWith('explain') ||
+      lower.includes('kya hai') ||
+      lower.includes('kaise') ||
+      lower.includes('kaun sa') ||
+      lower.includes('steps batao') ||
+      lower.includes('requirements kya');
+
+    const isOpenSite =
+      !isInformational &&
+      (lower.includes('kholo') ||
+        lower.includes('open karo') ||
+        lower.includes('khol kar dikhao') ||
+        lower.includes('open in') ||
+        lower.startsWith('open ') ||
+        lower.startsWith('visit ') ||
+        lower.startsWith('go to '));
+
+    const isLinkedInPost =
+      !isInformational &&
+      (lower.includes('linkedin') || lower.includes('post')) &&
+      (lower.includes('upload') || lower.includes('publish') || lower.includes('dalo') || lower.includes('daalo'));
+
+    const isVisualMatch =
+      !isInformational &&
+      (lower.includes('visual matched') ||
+        lower.includes('visual match') ||
+        lower.includes('matching images') ||
+        lower.includes('matching image') ||
+        lower.includes('similar images') ||
+        lower.includes('similar image') ||
+        lower.includes('reverse image') ||
+        lower.includes('photo se search') ||
+        lower.includes('image search')) &&
+      (!!attachedImage || lower.includes('image') || lower.includes('photo'));
+
+    let ackContent = '';
+    if (isInformational) {
+      ackContent = isHi
+        ? `आपके प्रश्न पर विचार कर रहा हूँ: "${goal}"...`
+        : isHinglish
+        ? `Aapke question ko analyze kar raha hoon: "${goal}"...`
+        : `Analyzing your question: "${goal}"...`;
+    } else if (isVisualMatch) {
+      ackContent = isHi
+        ? `छवि की दृश्य विशेषताओं का विश्लेषण कर रहा हूँ और दृश्य मिलान खोज रहा हूँ...`
+        : isHinglish
+        ? `Uploaded image ko analyze karke visually matching images search kar raha hoon...`
+        : `Analyzing visual features of image to locate matching web results...`;
+    } else if (isOpenSite) {
+      ackContent = isHi
+        ? `वेबसाइट खोलने की तैयारी कर रहा हूँ: "${goal}"...`
+        : isHinglish
+        ? `Website browser tab me open kar raha hoon...`
+        : `Opening target website in your browser tab...`;
+    } else if (isLinkedInPost) {
+      ackContent = isHi
+        ? `लिंक्डइन पोस्ट प्रक्रिया प्रारंभ कर रहा हूँ...`
+        : isHinglish
+        ? `LinkedIn post workflow initialize kar raha hoon...`
+        : `Preparing LinkedIn post workflow...`;
+    } else {
+      ackContent = isHi
+        ? `नमस्ते! मैंने आपका निर्देश प्राप्त कर लिया है: "${goal}"। मैं योजना तैयार कर रहा हूँ और ब्राउज़र ऑटोमेशन शुरू कर रहा हूँ...`
+        : isHinglish
+        ? `Task samajh gaya hoon: "${goal}"। Plan create karke target websites research kar raha hoon...`
+        : `Understood your goal: "${goal}". Preparing execution plan...`;
+    }
 
     const userMsg: ChatMessage = {
       id: `msg-user-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       sender: 'user',
       content: goal,
       timestamp: Date.now(),
+      attachedImage,
     };
 
     const agentAckMsg: ChatMessage = {
@@ -731,9 +949,16 @@ export const App: React.FC = () => {
       verificationStatus: 'UNVERIFIED',
     }));
 
+    const previousUserMessages = currentWorkspace.messages
+      .filter((m) => m.sender === 'user')
+      .map((m) => m.content);
+
     if (window.electronAPI) {
       try {
-        const res = await window.electronAPI.startTask(goal);
+        const res = await window.electronAPI.startTask(goal, {
+          previousQueries: previousUserMessages,
+          attachedImage,
+        });
         if (res?.taskId) {
           taskIdToTabIdRef.current[res.taskId] = currentTabId;
           updateTabWorkspace(currentTabId, (prev) => ({

@@ -1,4 +1,4 @@
-import type { AIProviderAdapter } from './ai-adapter';
+import type { AIProviderAdapter, TaskContext } from './ai-adapter';
 import type { ExecutionPlan } from '../../../shared/types';
 import type { ToolDefinition } from '../types';
 import { ExecutionPlanSchema } from '../validation';
@@ -13,7 +13,11 @@ export class GeminiAIAdapter implements AIProviderAdapter {
     this.model = model || 'gemini-3.5-flash';
   }
 
-  public async generatePlan(goal: string, tools: ToolDefinition[]): Promise<ExecutionPlan> {
+  public async generatePlan(
+    goal: string,
+    tools: ToolDefinition[],
+    context?: TaskContext
+  ): Promise<ExecutionPlan> {
     if (!this.apiKey) {
       throw new Error('Gemini API key is required. Please set it in Settings.');
     }
@@ -28,27 +32,62 @@ Your core principle is: Plans. Executes. Verifies.
 You understand user instructions in English, Hindi (Devanagari script), and Hinglish (Hindi written in Roman/Latin script, e.g. "5 AI startups research karo aur unka pricing compare karke report banao").
 Always interpret user intent accurately and map it to registered tools.
 
-Language Matching Rule:
-Match the language of the user's request (English -> English, Hindi -> Hindi, Hinglish -> Hinglish) for all summary, description, and expectedOutcome fields.
+Mode Selection Rules:
+1. Mode A: Conversational & Informational Queries (THE DEFAULT)
+   • When the user asks a question, definition, guide, advice, or explanation (e.g., "What is YouTube?", "What is LinkedIn?", "Which laptop is best with 16 GB RAM?", "What are the best Java DSA playlists?", "Notes Gallery kya hai?", "DSTL kya hai?"):
+   • DO NOT navigate browser tabs. DO NOT generate PDF or CSV files.
+   • Generate a single step using tool "chat_response" with parameter { "message": "<your complete, helpful, well-formatted answer>" }. Put the same answer in the "summary" field.
+   • When an attached image is provided and the user asks for a caption, description, or post text (e.g. "Is image ke liye LinkedIn description likho", "Write a caption for this photo", "Generate 3 post options"):
+     - Respond in chat using "chat_response" providing 3 well-crafted caption variations: Professional, Casual/Engaging, and Storytelling/Inspiring, each with suitable hashtags and calls to action. Do not navigate tabs.
 
-Deliverable Format Rule:
-By default for research, comparison, and web intelligence tasks, generate exactly ONE consolidated PDF report using file_create_pdf, and end the plan with verify_pdf_artifact.
-Only if the user explicitly requests CSV, Excel, or tabular raw data, use file_create_csv and verify_csv_artifact. Do not create duplicate files.
+2. Mode B: Direct Website Opening
+   • When the user instructs to open or visit a known platform or website:
+     - Examples: "bhai linkdin kholo", "linkdin open karo", "YouTube kholo", "open gmail", "amazon open karo", "GitHub kholo", "open twitter", "Notes Gallery kholo".
+     - Strip colloquial prefixes like "bhai", "yaar", "bro", "arre", "please", "ab".
+     - Correct phonetic typos ("linkdin" -> LinkedIn, "yt" -> YouTube).
+     - Direct URLs:
+       * LinkedIn -> "https://www.linkedin.com/"
+       * Microsoft Office -> "https://www.office.com/"
+       * BBD University -> "https://bbdu.ac.in/"
+       * YouTube -> "https://www.youtube.com/"
+       * Gmail -> "https://mail.google.com/"
+       * Amazon -> "https://www.amazon.in/"
+       * GitHub -> "https://github.com/"
+       * Notes Gallery -> tool "notes_gallery_open"
+     - For unfamiliar website opening commands (e.g. "Hackbriven website kholo"):
+       * Search Google for "[Entity] official website" instead of inventing unverified URLs.
+     - NEVER perform a Google search for queries like "bhai linkdin kholo". Open the platform URL directly using "browser_open_tab"!
+
+3. Mode C: Explicit Website Actions & Consequential Operations
+   • When the user commands the agent to publish or prepare a post on LinkedIn:
+     - E.g. "LinkedIn kholo aur meri ye post upload karo: [text]" or "Post this photo on LinkedIn with caption [text]"
+     - Step 1: "browser_open_tab" to "https://www.linkedin.com"
+     - Step 2: "browser_linkedin_post" with { "postText": extractedText, "imagePath": context?.attachedImage?.path, "imageData": context?.attachedImage?.dataUrl, "imageName": context?.attachedImage?.name, "action": "publish" } and "requiresApproval": true.
+   • For visual matching / reverse image search requests (e.g. "ye images ke visual matched find kro", "find matching images for this photo"):
+     - Step 1: "browser_visual_match" with { "imageName": context?.attachedImage?.name || "image", "imageData": context?.attachedImage?.dataUrl, "queryContext": ... }
+     - Step 2: "browser_navigate" to "https://www.google.com/search?tbm=isch&q=..." with openInTab: true
+   • For YouTube playback tasks (e.g., "open youtube and saiyara gana chalao", "play a song or video on YouTube", "YouTube kholo aur Java DSA ki achhi series chalao"):
+     - Extract the EXACT user target query (song name, video topic, artist, or playlist name, e.g. "saiyara", "Java DSA", "lofi beats"). NEVER default to or substitute "Java DSA" or any unrelated example!
+     - Step 1: "browser_navigate" to "https://www.youtube.com/results?search_query=..." with openInTab: true
+     - Step 2: "browser_youtube_play" with { "query": exactExtractedQuery, "openInTab": true }
+   • For Notes Gallery & study resources (e.g., "bhai aktu btech 2nd year ka pyq kholo notes gallery se", "Notes Gallery kholo aur DSTL Unit 2 ke PYQs dikhao"):
+     - Extract authentic academic entities (university, course, year, subject, category). NEVER substitute DSTL if another subject or general PYQ was asked!
+     - Step 1: "notes_gallery_search_and_open" with { "subject": ..., "university": ..., "course": ..., "year": ..., "unit": ..., "category": "PYQ", "action": "open" }
+   • For file deletion requests:
+     - Step 1: "file_delete" with { "path": ... } and "requiresApproval": true.
+
+4. Mode D: Multi-Step Research & Price Comparison
+   • For requests explicitly asking to research across multiple vendors/startups and compile a report (e.g., "Research five AI startups and compare their pricing"):
+   • Use background research tools ("browser_navigate", "browser_extract_startups", "browser_compare_prices", or "browser_search_and_extract").
+   • Create exactly ONE consolidated PDF report using "file_create_pdf", and end with "verify_pdf_artifact".
+
+Language Matching Rule:
+Match the language of the user's request (English -> English, Hindi -> Hindi, Hinglish -> Hinglish) for all summary, description, and message fields.
 
 Available tools:
 ${toolSummaries}
 
-Rules:
-1. Break down the user's natural language goal into sequential, executable steps.
-2. Select ONLY from the available registered tools. Do not invent tools.
-3. For explicit website opening commands ("open YouTube", "GitHub kholo", "open LinkedIn", "open google.com", "YouTube open karo", "Is website ko browser tab mein kholo"), generate a direct navigation step using browser_open_tab or browser_navigate with { url: targetUrl, openInTab: true }.
-4. For normal research requests ("Research five AI startups and compare their pricing", "Find the cheapest laptop with 16 GB RAM", "Compare products across multiple websites", "Summarize a webpage"), keep research inside the chatbot and do NOT open new tabs or navigate the user's active visible tab.
-5. For user profile opening requests ("Meri LinkedIn profile kholo", "Meri GitHub profile kholo"), use browser_check_profile. Never invent a fabricated profile URL or fake username.
-6. For price comparison tasks, use browser_compare_prices with the exact item requested (e.g. item: "laptop", item: "mango"). For laptops, jobs, product research, or multi-source topic intelligence, use browser_search_and_extract. Never mix up laptop queries with fruit/mango queries.
-7. For multi-step research and comparison tasks, generate a deliverable using file_create_pdf with a title and filename that strictly matches the user's requested product/topic (e.g. title: "Marketplace Price Comparison: Laptops (16GB RAM)" for laptops, "Marketplace Price Comparison: Fresh Mangoes" for mangoes), and end with verify_pdf_artifact. For direct navigation or profile commands, a single navigation/inspection step is sufficient.
-8. If an action deletes data, sends messages, or executes consequential external changes, set requiresApproval to true.
-9. Automated login, signup, account creation, and password entry are strictly prohibited. Never generate steps that attempt to log in or create user accounts.
-9. Return ONLY a valid JSON object matching this schema:
+Return ONLY a valid JSON object matching this schema:
 {
   "goal": string,
   "summary": string,
@@ -69,11 +108,33 @@ Rules:
     
     let lastErr = '';
     let response: Response | null = null;
+
+    const previousContextText = context?.previousQueries && context.previousQueries.length > 0
+      ? `Previous Conversation Context (last queries):\n${context.previousQueries.map((q, i) => `${i + 1}. "${q}"`).join('\n')}\n\n`
+      : '';
     
     for (let attempt = 0; attempt <= 1; attempt++) {
       if (attempt > 0) {
         await new Promise((r) => setTimeout(r, 1000));
       }
+
+      const promptParts: any[] = [{ text: systemPrompt }];
+
+      if (context?.attachedImage?.dataUrl) {
+        const match = context.attachedImage.dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+        if (match) {
+          promptParts.push({
+            inline_data: {
+              mime_type: match[1] || 'image/jpeg',
+              data: match[2],
+            },
+          });
+        }
+      }
+
+      promptParts.push({
+        text: `${previousContextText}${context?.attachedImage ? `[Attached Image: ${context.attachedImage.name}]\n` : ''}User Goal: "${goal}"`,
+      });
 
       try {
         response = await fetch(url, {
@@ -84,10 +145,7 @@ Rules:
             contents: [
               {
                 role: 'user',
-                parts: [
-                  { text: systemPrompt },
-                  { text: `User Goal: "${goal}"` },
-                ],
+                parts: promptParts,
               },
             ],
             generationConfig: {

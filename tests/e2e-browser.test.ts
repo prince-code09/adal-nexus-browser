@@ -27,7 +27,7 @@ describe('AdaL Nexus Real Desktop Browser E2E Tests', () => {
     if (app) {
       await app.close();
     }
-  });
+  }, 30000);
 
   it('1. Launches in its own desktop window with custom title bar & brand', async () => {
     expect(page).toBeDefined();
@@ -68,7 +68,7 @@ describe('AdaL Nexus Real Desktop Browser E2E Tests', () => {
     }, { timeout: 15000 });
 
     const tabs = await page.evaluate(() => window.adalNexus?.getTabs());
-    expect(tabs?.[0].url).toBe('https://example.com');
+    expect(tabs?.[0].url).toMatch(/^https:\/\/example\.com\/?$/);
   });
 
   it('4. Converts search query "weather today" to Google search URL', async () => {

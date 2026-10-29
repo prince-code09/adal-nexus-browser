@@ -32,7 +32,16 @@ export class ApprovalManager {
     if (!this.requireApprovalForConsequential) return false;
 
     // Direct consequential tools
-    const consequentialTools = ['send_message', 'publish_content', 'delete_data', 'execute_transaction'];
+    const consequentialTools = [
+      'send_message',
+      'publish_content',
+      'delete_data',
+      'execute_transaction',
+      'consequential_action_demo',
+      'browser_linkedin_post',
+      'file_delete',
+      'notes_gallery_delete',
+    ];
     if (consequentialTools.includes(toolName)) return true;
 
     // Destructive file or external operations

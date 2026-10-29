@@ -12,6 +12,7 @@ interface TabInstance {
 
 export const HEADER_HEIGHT = 84;
 export const SIDEBAR_WIDTH = 72;
+export const ADAL_SESSION_PARTITION = 'persist:adal-profile';
 
 export class TabManager {
   private tabs: TabInstance[] = [];
@@ -90,6 +91,7 @@ export class TabManager {
     if (typeof WebContentsView === 'function') {
       view = new WebContentsView({
         webPreferences: {
+          partition: ADAL_SESSION_PARTITION,
           nodeIntegration: false,
           contextIsolation: true,
           sandbox: true,

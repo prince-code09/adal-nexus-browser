@@ -173,7 +173,7 @@ const electronAPI: ElectronAPI = {
   getSettings: () => ipcRenderer.invoke(IPC_CHANNELS.GET_SETTINGS),
   saveSettings: (settings: Partial<AppSettings>) => ipcRenderer.invoke(IPC_CHANNELS.SAVE_SETTINGS, settings),
 
-  startTask: (goal: string) => ipcRenderer.invoke(IPC_CHANNELS.START_TASK, goal),
+  startTask: (goal: string, context?: any) => ipcRenderer.invoke(IPC_CHANNELS.START_TASK, goal, context),
   cancelTask: (taskId: string) => ipcRenderer.invoke(IPC_CHANNELS.CANCEL_TASK, taskId),
   respondApproval: (requestId: string, approved: boolean) =>
     ipcRenderer.invoke(IPC_CHANNELS.APPROVAL_RESPONSE, requestId, approved),

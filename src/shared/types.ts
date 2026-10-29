@@ -42,6 +42,15 @@ export interface ActionLogItem {
   data?: any;
 }
 
+export interface AttachedImage {
+  name: string;
+  path?: string;
+  dataUrl: string;
+  sizeBytes?: number;
+  size?: number;
+  type?: string;
+}
+
 export interface ApprovalRequest {
   id: string;
   stepId: string;
@@ -51,6 +60,11 @@ export interface ApprovalRequest {
   consequences: string[];
   parameters: Record<string, any>;
   timestamp: number;
+  whyRequired?: string;
+  targetResource?: string;
+  ifAllowed?: string;
+  ifDenied?: string;
+  attachedImage?: AttachedImage;
 }
 
 export interface VerificationAssertion {
@@ -99,6 +113,7 @@ export interface TaskRecord {
   resultSummary?: string;
   findings?: Record<string, any>[];
   pdfReportPath?: string;
+  attachedImage?: AttachedImage;
 }
 
 export interface ChatMessage {
@@ -114,6 +129,7 @@ export interface ChatMessage {
   findingsData?: Record<string, any>[];
   conclusion?: string;
   pdfPath?: string;
+  attachedImage?: AttachedImage;
 }
 
 export interface TabAgentWorkspace {
@@ -164,7 +180,7 @@ export interface ElectronAPI {
   saveSettings: (settings: Partial<AppSettings>) => Promise<AppSettings>;
 
   // Tasks & Planner
-  startTask: (goal: string) => Promise<{ taskId: string }>;
+  startTask: (goal: string, context?: { previousQueries?: string[]; attachedImage?: AttachedImage }) => Promise<{ taskId: string }>;
   cancelTask: (taskId: string) => Promise<boolean>;
   respondApproval: (requestId: string, approved: boolean) => Promise<void>;
 

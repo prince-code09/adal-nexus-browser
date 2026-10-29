@@ -135,8 +135,30 @@ export class VerificationEngine {
       };
     }
 
-    if (!csvPath) {
+    const hasCsvTool = plan.steps.some(
+      (s) => s.tool === 'file_create_csv' || s.tool === 'verify_csv_artifact'
+    );
+
+    if (!csvPath && hasCsvTool) {
       csvPath = 'artifacts/startups.csv';
+    }
+
+    if (!csvPath) {
+      // Conversational or browser action workflow (no file artifact expected)
+      const allPassed = assertions.every((a) => a.passed);
+      const reportStatus: VerificationStatus = allPassed ? 'VERIFIED' : 'FAILED';
+      const summary = allPassed
+        ? `VERIFIED: All ${assertions.length} deterministic verification assertions passed. Conversational/browser action completed successfully.`
+        : `FAILED: Verification detected ${assertions.filter((a) => !a.passed).length} failing assertion(s).`;
+
+      return {
+        taskId,
+        status: reportStatus,
+        summary,
+        timestamp: Date.now(),
+        assertions,
+        artifactsChecked,
+      };
     }
 
     // Assertion 2: Physical CSV Artifact Exists on Disk
@@ -267,7 +289,11 @@ export class VerificationEngine {
     }
 
     const summary = allPassed
-      ? `VERIFIED: All ${assertions.length} deterministic verification assertions passed. Artifact ${csvPath} read back and validated with ${parsedCsv?.rowCount || 0} complete records.`
+      ? (pdfPath
+          ? `VERIFIED: All ${assertions.length} deterministic verification assertions passed. PDF Report ${pdfPath} verified on disk.`
+          : csvPath
+          ? `VERIFIED: All ${assertions.length} deterministic verification assertions passed. Artifact ${csvPath} read back and validated with ${parsedCsv?.rowCount || 0} complete records.`
+          : `VERIFIED: All ${assertions.length} deterministic verification assertions passed. Workflow completed successfully.`)
       : `FAILED: Verification detected ${assertions.filter((a) => !a.passed).length} failing assertion(s).`;
 
     return {

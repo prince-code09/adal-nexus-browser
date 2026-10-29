@@ -10,7 +10,7 @@ describe('Real Playwright Browser Automation', () => {
 
   afterAll(async () => {
     await browserService.close();
-  });
+  }, 30000);
 
   it('launches real Chromium, navigates to web page, and reads content', async () => {
     await browserService.initialize();

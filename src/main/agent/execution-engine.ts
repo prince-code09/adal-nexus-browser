@@ -162,19 +162,83 @@ export class ExecutionEngine {
           taskRecord,
         });
 
+        const isLinkedIn = step.tool === 'browser_linkedin_post';
+        const isFileDelete = step.tool === 'file_delete' || step.tool === 'notes_gallery_delete';
+        const postText = step.params?.postText || '';
+        const targetPath = step.params?.path || step.params?.filePath || '';
+        const attachedImg = step.params?.imageData
+          ? {
+              name: step.params?.imageName || 'image',
+              dataUrl: step.params?.imageData,
+              path: step.params?.imagePath,
+            }
+          : step.params?.imagePath
+          ? {
+              name: step.params?.imageName || require('path').basename(step.params.imagePath),
+              dataUrl: '',
+              path: step.params?.imagePath,
+            }
+          : undefined;
+
         const approvalReq: ApprovalRequest = {
           id: `req-${Date.now()}-${step.id}`,
           stepId: step.id,
-          actionType: 'consequential_action',
-          title: `Approve: ${step.description}`,
-          description: `The agent is about to execute "${step.tool}" which has consequential external effects.`,
-          consequences: [
-            `Tool invocation: ${step.tool}`,
-            `Parameters: ${JSON.stringify(step.params)}`,
-            'May affect external systems or persist irreversible changes.',
-          ],
+          actionType: isLinkedIn
+            ? 'publish_content'
+            : isFileDelete
+            ? 'delete_data'
+            : 'consequential_action',
+          title: isLinkedIn
+            ? (attachedImg ? `Confirm LinkedIn Post Publication (with ${attachedImg.name})` : 'Confirm LinkedIn Post Publication')
+            : isFileDelete
+            ? `Confirm File Deletion: ${targetPath ? require('path').basename(targetPath) : 'File'}`
+            : `Approve: ${step.description}`,
+          description: isLinkedIn
+            ? `Do you want to publish the following post${attachedImg ? ` with attached image "${attachedImg.name}"` : ''} to your LinkedIn profile?\n\n"${postText}"`
+            : isFileDelete
+            ? `Do you want to permanently delete the file "${targetPath}" from disk?`
+            : `The agent is about to execute "${step.tool}" which has consequential external effects.`,
+          consequences: isLinkedIn
+            ? [
+                `Post content: "${postText.slice(0, 120)}${postText.length > 120 ? '...' : ''}"`,
+                ...(attachedImg ? [`Attached Image: ${attachedImg.name}${attachedImg.path ? ` (${attachedImg.path})` : ''}`] : []),
+                'This action will publish a public update visible to your professional network on LinkedIn.',
+                'You can review, edit, or delete the post directly on LinkedIn at any time afterwards.',
+              ]
+            : isFileDelete
+            ? [
+                `Target file: ${targetPath}`,
+                'This action will permanently delete the file from your computer.',
+                'Irreversible action: This file may not be recoverable from Recycle Bin.',
+              ]
+            : [
+                `Tool invocation: ${step.tool}`,
+                `Parameters: ${JSON.stringify(step.params)}`,
+                'May affect external systems or persist irreversible changes.',
+              ],
           parameters: step.params,
           timestamp: Date.now(),
+          whyRequired: isLinkedIn
+            ? `Publishing will make this content${attachedImg ? ' and attached image' : ''} publicly visible to your professional network and connections on LinkedIn.`
+            : isFileDelete
+            ? 'This action will permanently delete the selected file from disk and cannot be undone.'
+            : 'This consequential action may modify external data or persist changes.',
+          targetResource: isLinkedIn
+            ? 'LinkedIn Profile & Public Activity Feed'
+            : isFileDelete
+            ? (targetPath || 'Selected local file')
+            : (step.params?.path || step.params?.url || 'External System'),
+          ifAllowed: isLinkedIn
+            ? `The agent will publish the exact post content${attachedImg ? ' and attached image' : ''} shown above to your LinkedIn feed and verify the result.`
+            : isFileDelete
+            ? 'The file will be permanently removed from disk and verified.'
+            : 'The operation will proceed and verify the outcome.',
+          ifDenied: isLinkedIn
+            ? 'The post will remain unpublished and no changes will be made to your LinkedIn account.'
+            : isFileDelete
+            ? 'The file will remain intact and unchanged on disk.'
+            : 'The action is immediately cancelled and no changes are made.',
+          attachedImage: attachedImg,
         };
 
         const approved = await this.approvalManager.requestApproval(
@@ -267,7 +331,31 @@ export class ExecutionEngine {
         }
 
         // Store findings and conclusion extracted from research steps or document creation
-        if (step.tool === 'browser_extract_startups' && stepResult.data?.startups) {
+        if (step.tool === 'chat_response' && (stepResult.data?.message || stepResult.data?.conclusion)) {
+          accumulatedConclusion = stepResult.data.conclusion || stepResult.data.message;
+          taskRecord.resultSummary = accumulatedConclusion;
+        } else if (step.tool === 'browser_open_tab' && (stepResult.data?.conclusion || stepResult.data?.message)) {
+          accumulatedConclusion = stepResult.data.conclusion || stepResult.data.message;
+          taskRecord.resultSummary = accumulatedConclusion;
+        } else if (step.tool === 'browser_linkedin_post' && (stepResult.data?.conclusion || stepResult.data?.message)) {
+          accumulatedConclusion = stepResult.data.conclusion || stepResult.data.message;
+          taskRecord.resultSummary = accumulatedConclusion;
+        } else if (step.tool === 'browser_youtube_play' && (stepResult.data?.conclusion || stepResult.data?.message)) {
+          accumulatedConclusion = stepResult.data.conclusion || stepResult.data.message;
+          taskRecord.resultSummary = accumulatedConclusion;
+        } else if (step.tool === 'notes_gallery_search_and_open' && (stepResult.data?.conclusion || stepResult.data?.message)) {
+          accumulatedConclusion = stepResult.data.conclusion || stepResult.data.message;
+          taskRecord.resultSummary = accumulatedConclusion;
+        } else if (step.tool === 'notes_gallery_open' && (stepResult.data?.conclusion || stepResult.data?.message)) {
+          accumulatedConclusion = stepResult.data.conclusion || stepResult.data.message;
+          taskRecord.resultSummary = accumulatedConclusion;
+        } else if (step.tool === 'browser_check_profile' && (stepResult.data?.conclusion || stepResult.data?.message)) {
+          accumulatedConclusion = stepResult.data.conclusion || stepResult.data.message;
+          taskRecord.resultSummary = accumulatedConclusion;
+        } else if (step.tool === 'file_delete' && (stepResult.data?.conclusion || stepResult.data?.message)) {
+          accumulatedConclusion = stepResult.data.conclusion || stepResult.data.message;
+          taskRecord.resultSummary = accumulatedConclusion;
+        } else if (step.tool === 'browser_extract_startups' && stepResult.data?.startups) {
           accumulatedFindings = stepResult.data.startups;
           taskRecord.findings = accumulatedFindings;
         } else if (step.tool === 'browser_compare_prices' && stepResult.data?.items) {
@@ -300,6 +388,9 @@ export class ExecutionEngine {
           taskRecord.resultSummary = accumulatedConclusion;
         } else if (stepResult.evidence?.conclusion) {
           accumulatedConclusion = stepResult.evidence.conclusion;
+          taskRecord.resultSummary = accumulatedConclusion;
+        } else if (stepResult.data?.message && typeof stepResult.data.message === 'string') {
+          accumulatedConclusion = stepResult.data.message;
           taskRecord.resultSummary = accumulatedConclusion;
         }
       } else {
