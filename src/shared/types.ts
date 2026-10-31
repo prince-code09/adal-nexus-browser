@@ -197,6 +197,13 @@ export interface ElectronAPI {
   getAllArtifacts: () => Promise<ArtifactItem[]>;
   deleteArtifact: (filePath: string) => Promise<boolean>;
 
+  // Voice & Transcription
+  transcribeAudio?: (
+    audioBase64: string,
+    mimeType: string,
+    language?: string
+  ) => Promise<{ success: boolean; text?: string; error?: string }>;
+
   // Subscriptions / Events from main process
   onPlanUpdated: (callback: (plan: ExecutionPlan) => void) => () => void;
   onStepUpdated: (callback: (step: PlanStep) => void) => () => void;
@@ -309,6 +316,11 @@ export interface AdaLNexusAPI {
   getAllArtifacts?: () => Promise<ArtifactItem[]>;
   deleteArtifact?: (filePath: string) => Promise<boolean>;
   openArtifact?: (filePath: string) => Promise<boolean>;
+  transcribeAudio?: (
+    audioBase64: string,
+    mimeType: string,
+    language?: string
+  ) => Promise<{ success: boolean; text?: string; error?: string }>;
 
   // Events
   onTabsUpdated: (callback: (tabs: BrowserTab[]) => void) => () => void;

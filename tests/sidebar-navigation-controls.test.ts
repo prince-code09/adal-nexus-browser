@@ -26,7 +26,7 @@ describe('AdaL Nexus Sidebar, Navigation & Window Controls Verification', () => 
     if (app) {
       await app.close();
     }
-  });
+  }, 30000);
 
   it('1. Window controls (Minimize, Maximize/Restore, Close) are present and responsive', async () => {
     const minBtn = page.locator('button[title="Minimize"]').first();

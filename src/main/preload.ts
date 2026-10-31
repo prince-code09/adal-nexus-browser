@@ -87,6 +87,8 @@ const adalNexus: AdaLNexusAPI = {
   getExtensions: () => ipcRenderer.invoke(IPC_CHANNELS.EXTENSIONS_GET_ALL),
   getAllArtifacts: () => ipcRenderer.invoke(IPC_CHANNELS.GET_ALL_ARTIFACTS),
   deleteArtifact: (filePath: string) => ipcRenderer.invoke(IPC_CHANNELS.DELETE_ARTIFACT, filePath),
+  transcribeAudio: (audioBase64: string, mimeType: string, language?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.VOICE_TRANSCRIBE, audioBase64, mimeType, language),
   openArtifact: (filePath: string) => ipcRenderer.invoke(IPC_CHANNELS.OPEN_ARTIFACT, filePath),
 
   // Event Subscriptions
@@ -188,6 +190,8 @@ const electronAPI: ElectronAPI = {
   getArtifactContent: (filePath: string) => ipcRenderer.invoke(IPC_CHANNELS.GET_ARTIFACT_CONTENT, filePath),
   getAllArtifacts: () => ipcRenderer.invoke(IPC_CHANNELS.GET_ALL_ARTIFACTS),
   deleteArtifact: (filePath: string) => ipcRenderer.invoke(IPC_CHANNELS.DELETE_ARTIFACT, filePath),
+  transcribeAudio: (audioBase64: string, mimeType: string, language?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.VOICE_TRANSCRIBE, audioBase64, mimeType, language),
 
   onPlanUpdated: (callback: (plan: ExecutionPlan) => void) => {
     const handler = (_event: any, plan: ExecutionPlan) => callback(plan);

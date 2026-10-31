@@ -678,6 +678,94 @@ function registerIpcHandlers(): void {
     }
   });
 
+  // --- Voice Transcription via Gemini Audio Multimodal API ---
+  ipcMain.handle(
+    IPC_CHANNELS.VOICE_TRANSCRIBE,
+    async (_event, audioBase64: string, mimeType: string, language?: string) => {
+      try {
+        if (!audioBase64) {
+          return { success: false, error: 'No audio data received' };
+        }
+
+        const apiKey = currentSettings.apiKey || process.env.GEMINI_API_KEY || '';
+        if (!apiKey) {
+          return {
+            success: false,
+            error: 'Gemini API key is not configured. Please set your API key in Settings to enable voice transcription, or use typed input.',
+          };
+        }
+
+        // Clean raw base64 if it has data URL prefix
+        const rawBase64 = audioBase64.includes(',') ? audioBase64.split(',')[1] : audioBase64;
+        const cleanMime = (mimeType || 'audio/webm').split(';')[0];
+
+        const langPrompt =
+          language === 'hi-IN'
+            ? 'The speaker is speaking in Hindi. Transcribe accurately in Hindi (Devanagari script).'
+            : language === 'hinglish'
+            ? 'The speaker is speaking in Hinglish (Hindi written in Roman/Latin script, e.g. "WhatsApp Web kholo bhai", "YouTube par song chalao"). Transcribe in natural Hinglish.'
+            : 'The speaker is speaking in English. Transcribe accurately in English.';
+
+        const transcribeModel = currentSettings.model || 'gemini-3.5-flash';
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${transcribeModel}:generateContent?key=${apiKey}`;
+
+        const requestBody = {
+          contents: [
+            {
+              role: 'user',
+              parts: [
+                {
+                  inline_data: {
+                    mime_type: cleanMime,
+                    data: rawBase64,
+                  },
+                },
+                {
+                  text: `Accurately transcribe this audio recording into plain text. ${langPrompt} Return ONLY the verbatim transcribed words without any quotes, preambles, explanations, or punctuation additions.`,
+                },
+              ],
+            },
+          ],
+        };
+
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody),
+          signal: AbortSignal.timeout(25000),
+        });
+
+        if (!res.ok) {
+          const errText = await res.text();
+          console.warn('[Main] Voice transcription API error:', res.status, errText);
+          return {
+            success: false,
+            error: `Voice transcription service error (${res.status}). Please retry or use typed input.`,
+          };
+        }
+
+        const data: any = await res.json();
+        const candidate = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        const transcription = candidate ? candidate.trim().replace(/^["']|["']$/g, '') : '';
+
+        if (!transcription) {
+          return {
+            success: false,
+            error: 'No clear speech could be recognized. Please speak clearly into your microphone and retry.',
+          };
+        }
+
+        return { success: true, text: transcription };
+      } catch (err: any) {
+        console.warn('[Main] Voice transcription exception:', err);
+        return {
+          success: false,
+          error: `Audio transcription failed (${err?.message || 'timeout/network'}). Please retry or use typed input.`,
+        };
+      }
+    }
+  );
+
   // --- System Telemetry & Performance ---
   ipcMain.handle(IPC_CHANNELS.SYSTEM_GET_TELEMETRY, async () => {
     try {

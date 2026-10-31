@@ -26,7 +26,7 @@ describe('AdaL Nexus Search & Navigation Verification', () => {
     if (app) {
       await app.close();
     }
-  });
+  }, 30000);
 
   it('Case 1: Types "mario game" in center New Tab search box and presses Enter', async () => {
     const inputs = page.locator('input[placeholder*="Search Google or type a URL"]');

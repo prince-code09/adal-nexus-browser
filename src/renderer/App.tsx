@@ -847,7 +847,14 @@ export const App: React.FC = () => {
       );
 
     const lower = goal.toLowerCase();
+    const isMath =
+      /^[\d\s+\-*/^().=xX]+(\s*(?:kitna|equals|\?))?$/i.test(lower) ||
+      lower.includes('kitna hota') ||
+      lower.includes('kitne hote') ||
+      lower.startsWith('calculate');
+
     const isInformational =
+      isMath ||
       lower.startsWith('what is') ||
       lower.startsWith('who is') ||
       lower.startsWith('how to') ||
@@ -858,7 +865,9 @@ export const App: React.FC = () => {
       lower.includes('kaise') ||
       lower.includes('kaun sa') ||
       lower.includes('steps batao') ||
-      lower.includes('requirements kya');
+      lower.includes('requirements kya') ||
+      lower.includes('capital of') ||
+      lower.includes('rajdhani');
 
     const isOpenSite =
       !isInformational &&
@@ -891,10 +900,10 @@ export const App: React.FC = () => {
     let ackContent = '';
     if (isInformational) {
       ackContent = isHi
-        ? `आपके प्रश्न पर विचार कर रहा हूँ: "${goal}"...`
+        ? `उत्तर तैयार कर रहा हूँ...`
         : isHinglish
-        ? `Aapke question ko analyze kar raha hoon: "${goal}"...`
-        : `Analyzing your question: "${goal}"...`;
+        ? `Answer prepare kar raha hoon...`
+        : `Answering your question...`;
     } else if (isVisualMatch) {
       ackContent = isHi
         ? `छवि की दृश्य विशेषताओं का विश्लेषण कर रहा हूँ और दृश्य मिलान खोज रहा हूँ...`
@@ -903,7 +912,7 @@ export const App: React.FC = () => {
         : `Analyzing visual features of image to locate matching web results...`;
     } else if (isOpenSite) {
       ackContent = isHi
-        ? `वेबसाइट खोलने की तैयारी कर रहा हूँ: "${goal}"...`
+        ? `वेबसाइट सक्रिय ब्राउज़र टैब में खोल रहा हूँ...`
         : isHinglish
         ? `Website browser tab me open kar raha hoon...`
         : `Opening target website in your browser tab...`;
@@ -915,10 +924,10 @@ export const App: React.FC = () => {
         : `Preparing LinkedIn post workflow...`;
     } else {
       ackContent = isHi
-        ? `नमस्ते! मैंने आपका निर्देश प्राप्त कर लिया है: "${goal}"। मैं योजना तैयार कर रहा हूँ और ब्राउज़र ऑटोमेशन शुरू कर रहा हूँ...`
+        ? `योजना तैयार कर रहा हूँ और ब्राउज़र ऑटोमेशन शुरू कर रहा हूँ...`
         : isHinglish
-        ? `Task samajh gaya hoon: "${goal}"। Plan create karke target websites research kar raha hoon...`
-        : `Understood your goal: "${goal}". Preparing execution plan...`;
+        ? `Plan create karke research execute kar raha hoon...`
+        : `Preparing execution plan...`;
     }
 
     const userMsg: ChatMessage = {

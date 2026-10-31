@@ -1639,4 +1639,126 @@ describe('Autonomous Browser Agent & Multi-Mode Execution Suite', () => {
       expect(result.data.conclusion).toContain('has not yet started');
     });
   });
+
+  // =========================================================================
+  // Prompt 11 Verification Suite: Question Answering, Generic Navigation & Voice
+  // =========================================================================
+  describe('Prompt 11: AI Agent QA, Dynamic Navigation, Multi-Step Tasks & Voice', () => {
+    it('1. Answers simple mathematical question "1+1 kitna hota hai?" directly without generic introduction', async () => {
+      const plan = await adapter.generatePlan('1+1 kitna hota hai?', toolRegistry.getAllTools());
+      expect(plan.steps.length).toBe(1);
+      expect(plan.steps[0].tool).toBe('chat_response');
+      expect(plan.summary).toMatch(/1\s*\+\s*1\s*=\s*2/i);
+      expect(plan.summary).not.toContain('I am AdaL Nexus, your intelligent browser assistant');
+      expect(plan.summary).not.toContain('AdaL Nexus aapka intelligent browser agent hai');
+    });
+
+    it('2. Answers general conceptual question "What is artificial intelligence?" directly with thorough explanation', async () => {
+      const plan = await adapter.generatePlan('What is artificial intelligence?', toolRegistry.getAllTools());
+      expect(plan.steps.length).toBe(1);
+      expect(plan.steps[0].tool).toBe('chat_response');
+      expect(plan.summary).toMatch(/branch of computer science|machine learning|human intelligence/i);
+      expect(plan.summary).not.toContain('I am AdaL Nexus, your intelligent autonomous browser assistant');
+    });
+
+    it('3. Answers technical question "Explain JavaScript promises." with states, syntax, and async/await', async () => {
+      const plan = await adapter.generatePlan('Explain JavaScript promises.', toolRegistry.getAllTools());
+      expect(plan.steps.length).toBe(1);
+      expect(plan.steps[0].tool).toBe('chat_response');
+      expect(plan.summary).toMatch(/promise/i);
+      expect(plan.summary).toMatch(/pending|fulfilled|rejected/i);
+      expect(plan.summary).not.toContain('I am AdaL Nexus, your intelligent browser assistant');
+    });
+
+    it('4. Answers factual question "What is the capital of India?" with New Delhi', async () => {
+      const plan = await adapter.generatePlan('What is the capital of India?', toolRegistry.getAllTools());
+      expect(plan.steps.length).toBe(1);
+      expect(plan.steps[0].tool).toBe('chat_response');
+      expect(plan.summary).toMatch(/New Delhi/i);
+      expect(plan.summary).not.toContain('I am AdaL Nexus, your intelligent browser assistant');
+    });
+
+    it('5. "WhatsApp Web kholo bhai." navigates visible browser tab to https://web.whatsapp.com', async () => {
+      const plan = await adapter.generatePlan('WhatsApp Web kholo bhai.', toolRegistry.getAllTools());
+      expect(plan.steps.length).toBe(1);
+      expect(plan.steps[0].tool).toBe('browser_navigate');
+      expect(plan.steps[0].params.url).toBe('https://web.whatsapp.com');
+      expect(plan.steps[0].params.openInTab).toBe(true);
+
+      const engine = new ExecutionEngine(
+        toolRegistry,
+        mockBrowserService,
+        artifactService,
+        approvalManager,
+        verificationEngine,
+        mockDb,
+        mockWs,
+        {
+          onStatusChanged: () => {},
+          onPlanUpdated: () => {},
+          onStepUpdated: () => {},
+          onLogAdded: () => {},
+          onApprovalRequested: (req) => {
+            approvalManager.resolveApproval(req.id, true);
+          },
+        },
+        mockTabManager
+      );
+      const record = await engine.executePlan('task-wa-nav', plan);
+      expect(record.status).toBe('completed');
+      expect(mockTabManager.navigatedUrl).toBe('https://web.whatsapp.com');
+    });
+
+    it('6. "Open the official AKTU website." navigates visible browser tab to https://aktu.ac.in', async () => {
+      const plan = await adapter.generatePlan('Open the official AKTU website.', toolRegistry.getAllTools());
+      expect(plan.steps.length).toBe(1);
+      expect(plan.steps[0].tool).toBe('browser_navigate');
+      expect(plan.steps[0].params.url).toBe('https://aktu.ac.in');
+      expect(plan.steps[0].params.openInTab).toBe(true);
+
+      const engine = new ExecutionEngine(
+        toolRegistry,
+        mockBrowserService,
+        artifactService,
+        approvalManager,
+        verificationEngine,
+        mockDb,
+        mockWs,
+        {
+          onStatusChanged: () => {},
+          onPlanUpdated: () => {},
+          onStepUpdated: () => {},
+          onLogAdded: () => {},
+          onApprovalRequested: (req) => {
+            approvalManager.resolveApproval(req.id, true);
+          },
+        },
+        mockTabManager
+      );
+      await engine.executePlan('task-aktu-nav', plan);
+      expect(mockTabManager.navigatedUrl).toBe('https://aktu.ac.in');
+    });
+
+    it('7. Navigates arbitrary websites dynamically (e.g. "Open Netflix.", "Cricbuzz kholo")', async () => {
+      const netflixPlan = await adapter.generatePlan('Open Netflix.', toolRegistry.getAllTools());
+      expect(netflixPlan.steps[0].params.url).toBe('https://www.netflix.com');
+      expect(netflixPlan.steps[0].params.openInTab).toBe(true);
+
+      const cricbuzzPlan = await adapter.generatePlan('Cricbuzz kholo', toolRegistry.getAllTools());
+      expect(cricbuzzPlan.steps[0].params.url).toBe('https://www.cricbuzz.com');
+      expect(cricbuzzPlan.steps[0].params.openInTab).toBe(true);
+    });
+
+    it('8. Multi-step website research task "AKTU ki official website kholo aur previous year question papers find karo" plans multi-step execution', async () => {
+      const plan = await adapter.generatePlan(
+        'AKTU ki official website kholo aur previous year question papers find karo',
+        toolRegistry.getAllTools()
+      );
+      expect(plan.steps.length).toBeGreaterThanOrEqual(2);
+      expect(plan.steps[0].tool).toBe('browser_navigate');
+      expect(plan.steps[0].params.url).toBe('https://aktu.ac.in');
+      expect(plan.steps[0].params.openInTab).toBe(true);
+      expect(plan.steps[1].tool).toBe('browser_read_page');
+    });
+  });
 });

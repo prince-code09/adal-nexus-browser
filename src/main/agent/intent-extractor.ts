@@ -45,6 +45,20 @@ export const KNOWN_PLATFORMS: KnownPlatform[] = [
     aliases: ['bbd', 'bbdu', 'bbd university', 'babu banarasi das university', 'babu banarasi das'],
   },
   {
+    name: 'AKTU',
+    url: 'https://aktu.ac.in',
+    aliases: [
+      'aktu',
+      'aktu.ac.in',
+      'dr. a.p.j. abdul kalam technical university',
+      'dr apj abdul kalam technical university',
+      'apj abdul kalam university',
+      'aktu university',
+      'aktu official',
+      'uptu',
+    ],
+  },
+  {
     name: 'YouTube',
     url: 'https://www.youtube.com',
     aliases: ['youtube', 'yt', 'you tube', 'yotube', 'youtub'],
@@ -108,17 +122,74 @@ export interface NavigationClassification {
 }
 
 /**
- * Strips conversational filler and honorific prefixes in English, Hindi, Hinglish:
+ * Strips conversational filler and honorific prefixes AND suffixes in English, Hindi, Hinglish:
  * "bhai", "bhaiya", "bro", "yaar", "dost", "please", "plz", "kripya", "arre", "suno", "sun", "can you", "could you", etc.
  */
-export function stripConversationalPrefixes(text: string): string {
+export function stripConversationalAffixes(text: string): string {
   if (!text) return '';
   let cleaned = text.trim();
+  // Strip leading prefixes
   cleaned = cleaned.replace(
     /^(?:bhai\s+|bhaiya\s+|bro\s+|yaar\s+|dost\s+|please\s+|plz\s+|kripya\s+|arre\s+|suno\s+|sun\s+|can\s+you\s+|could\s+you\s+|just\s+|ab\s+|aab\s+|now\s+)+/gi,
     ''
   );
+  // Strip trailing suffixes (e.g. "kholo bhai", "open please", "kholo yaar", "kholo bhaiya", "kholo na")
+  cleaned = cleaned.replace(
+    /(?:\s+(?:bhai|bhaiya|bro|yaar|dost|please|plz|kripya|arre|suno|sun|na|ji|batao|kijiye))+$/gi,
+    ''
+  );
   return cleaned.trim();
+}
+
+export function stripConversationalPrefixes(text: string): string {
+  return stripConversationalAffixes(text);
+}
+
+/**
+ * Safely evaluates simple arithmetic and mathematical expressions.
+ * Handles +, -, *, x, /, %, ^, parentheses and natural language framing.
+ */
+export function evaluateMathExpression(text: string): { isMath: boolean; result?: string; calculation?: string } {
+  if (!text) return { isMath: false };
+  const lower = text.toLowerCase().trim();
+
+  // Extract arithmetic pattern from strings like "1+1 kitna hota hai?", "calculate 25 * 4", "what is 100 / 5"
+  let expr = lower
+    .replace(/^(?:what\s+is|calculate|solve|find\s+the\s+value\s+of|kitna\s+hota\s+hai|kitna\s+hua|kitne\s+hote\s+hain|tell\s+me|answer\s+of)\s+/gi, '')
+    .replace(/(?:\s*(?:kitna\s+hota\s+hai|kitna\s+hua|kitne\s+hote\s+hain|\?|equals|\=))+$/gi, '')
+    .trim();
+
+  // Support "x" or "X" as multiplication
+  expr = expr.replace(/(\d)\s*[xX]\s*(\d)/g, '$1 * $2');
+
+  // Verify that the candidate string consists strictly of numbers, basic operators, and whitespace
+  if (!/^[\d\s+\-*/^().]+$/.test(expr)) {
+    return { isMath: false };
+  }
+
+  // Must contain at least one digit and one operator
+  if (!/\d/.test(expr) || !/[+\-*/^]/.test(expr)) {
+    return { isMath: false };
+  }
+
+  try {
+    // Replace ^ with ** for power
+    const jsExpr = expr.replace(/\^/g, '**');
+    // Evaluate in safe, isolated Function context with no scope access
+    const evaluated = Function(`"use strict"; return (${jsExpr});`)();
+    if (typeof evaluated === 'number' && !isNaN(evaluated) && isFinite(evaluated)) {
+      const rounded = Math.round(evaluated * 1000000) / 1000000;
+      return {
+        isMath: true,
+        result: String(rounded),
+        calculation: `${expr.trim()} = ${rounded}`,
+      };
+    }
+  } catch {
+    // Syntax error in arithmetic string
+  }
+
+  return { isMath: false };
 }
 
 /**
@@ -144,6 +215,11 @@ export function isConversationalQuery(goal: string): boolean {
     lower.includes('tarika batao');
 
   if (isHowToQuestion) {
+    return true;
+  }
+
+  // Arithmetic and math evaluations are pure Mode A conversational queries
+  if (evaluateMathExpression(goal).isMath) {
     return true;
   }
 
@@ -186,6 +262,9 @@ export function isConversationalQuery(goal: string): boolean {
     lower.includes('kya hai') ||
     lower.includes('kya h') ||
     lower.includes('kya hota hai') ||
+    lower.includes('kitna hota hai') ||
+    lower.includes('kitne hote hain') ||
+    lower.includes('kitna hua') ||
     lower.includes('kaun sa') ||
     lower.includes('kaun si') ||
     lower.includes('ke bare mein') ||
@@ -414,8 +493,23 @@ export function classifyNavigationIntent(goal: string): NavigationClassification
     cleaned.match(/\b([a-zA-Z0-9_\s-]+?)\s*(?:ki\s+)?website\s*(?:kholo|open karo|open|khol kar dikhao)\b/i);
 
   if (websiteCmdMatch && websiteCmdMatch[1]) {
-    const rawEntity = websiteCmdMatch[1].trim();
-    const candidateEntity = stripConversationalPrefixes(rawEntity);
+    let candidateEntity = websiteCmdMatch[1].trim();
+    candidateEntity = candidateEntity.replace(/^(?:the\s+)?(?:official\s+)?/i, '').trim();
+    candidateEntity = stripConversationalAffixes(candidateEntity);
+
+    // Check if this entity matches any known platform aliases
+    for (const plat of KNOWN_PLATFORMS) {
+      if (plat.aliases.some((a) => candidateEntity.toLowerCase() === a.toLowerCase())) {
+        return {
+          isNavigation: true,
+          isGeneralSearch: false,
+          isClarificationNeeded: false,
+          destinationUrl: plat.url,
+          targetName: plat.name,
+        };
+      }
+    }
+
     if (candidateEntity.length >= 2 && !candidateEntity.includes('search')) {
       return {
         isNavigation: true,
@@ -425,6 +519,73 @@ export function classifyNavigationIntent(goal: string): NavigationClassification
         targetName: `${candidateEntity} (Official Website Search)`,
         searchKeywords: `${candidateEntity} official website`,
       };
+    }
+  }
+
+  // Generic dynamic website opening command extraction
+  // Handles arbitrary websites: "Open Netflix", "Cricbuzz kholo", "Open Spotify", "Canva open karo", "Open Figma"
+  if (hasNavVerb) {
+    let candidate = cleaned
+      .replace(/^(?:open|visit|go to|navigate to)\s+/i, '')
+      .replace(/\s*(?:kholo|open karo|open kijiye|khol do|khol kar dikhao|kholke dikhao|pe jao|par jao|open)$/i, '')
+      .trim();
+
+    candidate = candidate
+      .replace(/^(?:the\s+)?(?:official\s+)?/i, '')
+      .replace(/(?:\s+(?:ki\s+)?(?:official\s+)?(?:website|portal|site|page))+$/i, '')
+      .replace(/[.,!?;:]+$/, '')
+      .trim();
+
+    candidate = stripConversationalAffixes(candidate);
+
+    if (candidate && candidate.length >= 2) {
+      // Check if candidate matches any known platform alias
+      for (const plat of KNOWN_PLATFORMS) {
+        if (plat.aliases.some((a) => candidate.toLowerCase() === a.toLowerCase())) {
+          return {
+            isNavigation: true,
+            isGeneralSearch: false,
+            isClarificationNeeded: false,
+            destinationUrl: plat.url,
+            targetName: plat.name,
+          };
+        }
+      }
+
+      // If candidate is a domain with a dot (e.g. "cricbuzz.com", "aktu.ac.in")
+      if (/^[a-zA-Z0-9][-a-zA-Z0-9]*\.[a-zA-Z]{2,}(?:\/.*)?$/i.test(candidate)) {
+        return {
+          isNavigation: true,
+          isGeneralSearch: false,
+          isClarificationNeeded: false,
+          destinationUrl: `https://${candidate}`,
+          targetName: candidate,
+        };
+      }
+
+      // If candidate is a single brand/service word (e.g. "netflix", "spotify", "cricbuzz", "canva", "figma", "coursera")
+      if (/^[a-zA-Z0-9_-]+$/i.test(candidate) && !['search', 'find', 'report', 'compare', 'research'].includes(candidate.toLowerCase())) {
+        const domainUrl = `https://www.${candidate.toLowerCase()}.com`;
+        return {
+          isNavigation: true,
+          isGeneralSearch: false,
+          isClarificationNeeded: false,
+          destinationUrl: domainUrl,
+          targetName: candidate.charAt(0).toUpperCase() + candidate.slice(1),
+        };
+      }
+
+      // Multi-word organization/portal name -> verified official search
+      if (!candidate.toLowerCase().includes('research') && !candidate.toLowerCase().includes('compare')) {
+        return {
+          isNavigation: true,
+          isGeneralSearch: true,
+          isClarificationNeeded: false,
+          destinationUrl: `https://www.google.com/search?q=${encodeURIComponent(`${candidate} official website`)}`,
+          targetName: `${candidate} (Official Website Search)`,
+          searchKeywords: `${candidate} official website`,
+        };
+      }
     }
   }
 

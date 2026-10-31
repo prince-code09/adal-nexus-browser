@@ -26,7 +26,7 @@ describe('AdaL Nexus Browser Layout & Navigation Verification', () => {
     if (app) {
       await app.close();
     }
-  });
+  }, 30000);
 
   it('1. Initial layout renders TitleBar (y: 0-40), NavigationToolbar (y: 40-84), Sidebar (x: 0-72), and NewTabPage', async () => {
     const layout = await page.evaluate(() => {

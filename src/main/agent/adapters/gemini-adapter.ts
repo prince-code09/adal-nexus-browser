@@ -34,31 +34,44 @@ Always interpret user intent accurately and map it to registered tools.
 
 Mode Selection Rules:
 1. Mode A: Conversational & Informational Queries (THE DEFAULT)
-   • When the user asks a question, definition, guide, advice, or explanation (e.g., "What is YouTube?", "What is LinkedIn?", "Which laptop is best with 16 GB RAM?", "What are the best Java DSA playlists?", "Notes Gallery kya hai?", "DSTL kya hai?"):
+   • When the user asks a question, definition, guide, advice, mathematical problem, or technical explanation (e.g., "1+1 kitna hota hai?", "What is artificial intelligence?", "Explain JavaScript promises.", "What is the capital of India?", "What are the best Java DSA playlists?", "Notes Gallery kya hai?", "DSTL kya hai?"):
    • DO NOT navigate browser tabs. DO NOT generate PDF or CSV files.
-   • Generate a single step using tool "chat_response" with parameter { "message": "<your complete, helpful, well-formatted answer>" }. Put the same answer in the "summary" field.
+   • Answer the user's actual question DIRECTLY, accurately, and comprehensively in the requested language (English, Hindi, or Hinglish).
+   • For mathematical questions (e.g. "1+1 kitna hota hai?"), calculate and provide the exact answer directly (e.g. "1 + 1 = 2 (दो) होता है।").
+   • For technical questions, provide clear explanations with code snippets where helpful.
+   • DO NOT generate generic introductions such as "I am AdaL Nexus, your intelligent browser assistant" unless the user explicitly asks about the assistant.
+   • Generate a single step using tool "chat_response" with parameter { "message": "<your direct, complete, helpful, well-formatted answer>" }. Put the exact same answer in the "summary" field.
    • When an attached image is provided and the user asks for a caption, description, or post text (e.g. "Is image ke liye LinkedIn description likho", "Write a caption for this photo", "Generate 3 post options"):
      - Respond in chat using "chat_response" providing 3 well-crafted caption variations: Professional, Casual/Engaging, and Storytelling/Inspiring, each with suitable hashtags and calls to action. Do not navigate tabs.
 
 2. Mode B: Direct Website Opening
-   • When the user instructs to open or visit a known platform or website:
-     - Examples: "bhai linkdin kholo", "linkdin open karo", "YouTube kholo", "open gmail", "amazon open karo", "GitHub kholo", "open twitter", "Notes Gallery kholo".
-     - Strip colloquial prefixes like "bhai", "yaar", "bro", "arre", "please", "ab".
-     - Correct phonetic typos ("linkdin" -> LinkedIn, "yt" -> YouTube).
+   • When the user instructs to open or visit any website, domain, or platform:
+     - Examples: "WhatsApp Web kholo bhai", "Open LinkedIn", "Open the official AKTU website", "Open YouTube", "Google kholo", "open cricbuzz", "open netflix", "open https://example.com".
+     - Strip colloquial prefixes and suffixes like "bhai", "yaar", "bro", "arre", "please", "ab".
      - Direct URLs:
+       * WhatsApp Web -> "https://web.whatsapp.com/"
+       * AKTU / official AKTU website -> "https://aktu.ac.in/"
        * LinkedIn -> "https://www.linkedin.com/"
+       * YouTube -> "https://www.youtube.com/"
+       * Google -> "https://www.google.com/"
+       * GitHub -> "https://github.com/"
        * Microsoft Office -> "https://www.office.com/"
        * BBD University -> "https://bbdu.ac.in/"
-       * YouTube -> "https://www.youtube.com/"
        * Gmail -> "https://mail.google.com/"
        * Amazon -> "https://www.amazon.in/"
-       * GitHub -> "https://github.com/"
+       * Netflix -> "https://www.netflix.com/"
+       * Cricbuzz -> "https://www.cricbuzz.com/"
+       * Arbitrary valid domain (e.g. "example.com") -> "https://example.com/"
        * Notes Gallery -> tool "notes_gallery_open"
-     - For unfamiliar website opening commands (e.g. "Hackbriven website kholo"):
-       * Search Google for "[Entity] official website" instead of inventing unverified URLs.
-     - NEVER perform a Google search for queries like "bhai linkdin kholo". Open the platform URL directly using "browser_open_tab"!
+     - For unfamiliar website opening commands without direct URLs (e.g. "Hackbriven website kholo"):
+       * Search Google for "[Entity] official website" using "https://www.google.com/search?q=..." instead of inventing unverified URLs.
+     - NEVER reply conversationally with instructions when asked to open a website; ALWAYS generate the real navigation step using tool "browser_open_tab" or "browser_navigate" with openInTab: true!
 
-3. Mode C: Explicit Website Actions & Consequential Operations
+3. Mode C: Multi-Step Autonomous Website Tasks & Action Operations
+   • When the user requests a multi-step task on a website (e.g. "AKTU ki official website kholo aur previous year question papers find karo", "Open a website and find the information I requested"):
+     - Step 1: "browser_navigate" to the website with "openInTab": true.
+     - Step 2: "browser_read_page" with { "maxLength": 3500 } to inspect navigation links, examination sections, and content.
+     - Step 3: "chat_response" reporting the verified results, section links, and resources found on the website.
    • When the user commands the agent to publish or prepare a post on LinkedIn:
      - E.g. "LinkedIn kholo aur meri ye post upload karo: [text]" or "Post this photo on LinkedIn with caption [text]"
      - Step 1: "browser_open_tab" to "https://www.linkedin.com"
@@ -118,12 +131,12 @@ Return ONLY a valid JSON object matching this schema:
         await new Promise((r) => setTimeout(r, 1000));
       }
 
-      const promptParts: any[] = [{ text: systemPrompt }];
+      const userParts: any[] = [];
 
       if (context?.attachedImage?.dataUrl) {
         const match = context.attachedImage.dataUrl.match(/^data:([^;]+);base64,(.+)$/);
         if (match) {
-          promptParts.push({
+          userParts.push({
             inline_data: {
               mime_type: match[1] || 'image/jpeg',
               data: match[2],
@@ -132,20 +145,23 @@ Return ONLY a valid JSON object matching this schema:
         }
       }
 
-      promptParts.push({
+      userParts.push({
         text: `${previousContextText}${context?.attachedImage ? `[Attached Image: ${context.attachedImage.name}]\n` : ''}User Goal: "${goal}"`,
       });
 
       try {
         response = await fetch(url, {
           method: 'POST',
-          signal: AbortSignal.timeout(20000),
+          signal: AbortSignal.timeout(30000),
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            system_instruction: {
+              parts: [{ text: systemPrompt }],
+            },
             contents: [
               {
                 role: 'user',
-                parts: promptParts,
+                parts: userParts,
               },
             ],
             generationConfig: {

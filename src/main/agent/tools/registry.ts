@@ -893,22 +893,37 @@ export class ToolRegistry {
           }
         }
 
+        // Only invoke background browser service if available and needed for headless automation
+        if (context.browserService && typeof context.browserService.getIsControlledByAgent === 'function') {
+          try {
+            await context.browserService.navigate(url, 15000);
+          } catch {}
+        }
+
+        let siteName = url;
         try {
-          const browser: PlaywrightBrowserService = context.browserService;
-          await browser.navigate(url, 20000);
+          const parsed = new URL(url);
+          const host = parsed.hostname.replace(/^www\./, '');
+          if (host.includes('whatsapp')) siteName = 'WhatsApp Web';
+          else if (host.includes('aktu.ac.in') || host.includes('aktu')) siteName = 'AKTU';
+          else if (host.includes('linkedin')) siteName = 'LinkedIn';
+          else if (host.includes('youtube')) siteName = 'YouTube';
+          else if (host.includes('google')) siteName = 'Google';
+          else if (host.includes('github')) siteName = 'GitHub';
+          else if (host.includes('amazon')) siteName = 'Amazon';
+          else if (host.includes('netflix')) siteName = 'Netflix';
+          else if (host.includes('cricbuzz')) siteName = 'Cricbuzz';
+          else if (host.includes('spotify')) siteName = 'Spotify';
+          else if (host.includes('twitter') || host.includes('x.com')) siteName = 'X (Twitter)';
+          else if (host.includes('instagram')) siteName = 'Instagram';
+          else if (host.includes('reddit')) siteName = 'Reddit';
+          else if (host.includes('wikipedia')) siteName = 'Wikipedia';
+          else {
+            const domainPart = host.split('.')[0];
+            siteName = domainPart.charAt(0).toUpperCase() + domainPart.slice(1);
+          }
         } catch {}
 
-        const siteName = url.includes('amazon')
-          ? 'Amazon'
-          : url.includes('youtube')
-          ? 'YouTube'
-          : url.includes('linkedin')
-          ? 'LinkedIn'
-          : url.includes('google')
-          ? 'Google'
-          : url.includes('github')
-          ? 'GitHub'
-          : url;
         const conclusionMsg = `Successfully opened ${siteName} (${url}) in your visible browser tab.`;
 
         return {

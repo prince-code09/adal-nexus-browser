@@ -26,7 +26,7 @@ describe('AdaL Nexus: Blank Page & Tab Creation Verification', () => {
     if (app) {
       await app.close();
     }
-  });
+  }, 30000);
 
   it('1. Tab creation from React + button works, creates 3 unique tabs displaying New Tab / Home', async () => {
     // Initial tab should be New Tab

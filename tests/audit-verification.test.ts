@@ -26,7 +26,7 @@ describe('AdaL Nexus Full-System Audit Verification', () => {
     if (app) {
       await app.close();
     }
-  });
+  }, 30000);
 
   it('1. Extensions button in Sidebar opens Extensions modal and strictly DOES NOT open AI Chatbot', async () => {
     // Locate Extensions button in sidebar

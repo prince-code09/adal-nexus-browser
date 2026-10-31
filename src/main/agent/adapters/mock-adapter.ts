@@ -1,7 +1,13 @@
 import type { AIProviderAdapter, TaskContext } from './ai-adapter';
 import type { ExecutionPlan, PlanStep } from '../../../shared/types';
 import type { ToolDefinition } from '../types';
-import { isConversationalQuery, resolveTargetQuery, classifyNavigationIntent, extractAcademicQuery } from '../intent-extractor';
+import {
+  isConversationalQuery,
+  resolveTargetQuery,
+  classifyNavigationIntent,
+  extractAcademicQuery,
+  evaluateMathExpression,
+} from '../intent-extractor';
 
 export class MockLocalAIAdapter implements AIProviderAdapter {
   public providerName = 'mock';
@@ -472,6 +478,10 @@ export class MockLocalAIAdapter implements AIProviderAdapter {
     // =========================================================================
     const isNotesGalleryIntent =
       !isInformationalQuery &&
+      !lower.includes('website') &&
+      !lower.includes('official website') &&
+      !lower.includes('portal') &&
+      !lower.includes('.ac.in') &&
       (
         lower.includes('notes gallery') ||
         lower.includes('pyq') ||
@@ -481,7 +491,8 @@ export class MockLocalAIAdapter implements AIProviderAdapter {
         lower.includes('cyber security') ||
         lower.includes('uploaded pdf') ||
         lower.includes('mera pdf') ||
-        lower.includes('aktu') ||
+        (lower.includes('aktu') && !lower.includes('kholo') && !lower.includes('open')) ||
+        (lower.includes('aktu') && (lower.includes('pyq') || lower.includes('notes') || lower.includes('paper') || lower.includes('syllabus'))) ||
         lower.includes('btech') ||
         lower.includes('b.tech') ||
         lower.includes('semester') ||
@@ -654,6 +665,83 @@ export class MockLocalAIAdapter implements AIProviderAdapter {
     if (navClass.isNavigation && navClass.destinationUrl) {
       const destinationUrl = navClass.destinationUrl;
       const targetName = navClass.targetName || 'Website';
+
+      // Check if this is a multi-step dynamic research/finding task on a website
+      // e.g. "AKTU ki official website kholo aur previous year question papers find karo"
+      //      "Open a website and find the information I requested"
+      const isMultiStepWebTask =
+        (lower.includes('aur ') || lower.includes('and ') || lower.includes('phir ') || lower.includes('then ')) &&
+        (lower.includes('find') ||
+          lower.includes('search') ||
+          lower.includes('dhoondo') ||
+          lower.includes('dhundho') ||
+          lower.includes('extract') ||
+          lower.includes('papers') ||
+          lower.includes('pyq') ||
+          lower.includes('question paper') ||
+          lower.includes('info'));
+
+      if (isMultiStepWebTask) {
+        const searchTopic =
+          lower.includes('previous year') || lower.includes('pyq') || lower.includes('question paper')
+            ? 'Previous Year Question Papers'
+            : 'Requested Information';
+
+        const steps: PlanStep[] = [
+          {
+            id: 'step-1',
+            order: 1,
+            description: isHinglish
+              ? `AdaL Nexus browser tab me ${targetName} (${destinationUrl}) open karna`
+              : isHindi
+              ? `सक्रिय ब्राउज़र टैब में ${targetName} (${destinationUrl}) खोलें`
+              : `Open ${targetName} (${destinationUrl}) in active AdaL Nexus browser tab`,
+            tool: 'browser_navigate',
+            params: { url: destinationUrl, openInTab: true },
+            status: 'pending',
+            expectedOutcome: `Successfully opened ${destinationUrl} in active browser tab`,
+          },
+          {
+            id: 'step-2',
+            order: 2,
+            description: isHinglish
+              ? `Webpage content aur navigation links inspect karke ${searchTopic} dhoondna`
+              : isHindi
+              ? `वेबपेज सामग्री और लिंक का निरीक्षण करके ${searchTopic} खोजना`
+              : `Inspect webpage structure and navigation links to locate ${searchTopic}`,
+            tool: 'browser_read_page',
+            params: { maxLength: 3000 },
+            status: 'pending',
+            expectedOutcome: 'Extracted visible links and content',
+          },
+          {
+            id: 'step-3',
+            order: 3,
+            description: isHinglish
+              ? `${targetName} par ${searchTopic} ke verified links aur details report karna`
+              : isHindi
+              ? `${targetName} पर ${searchTopic} के सत्यापित परिणाम प्रस्तुत करें`
+              : `Report verified findings and links for ${searchTopic}`,
+            tool: 'chat_response',
+            params: {
+              message: isHinglish
+                ? `${targetName} (${destinationUrl}) open ho gayi hai. Examination aur ${searchTopic} section ke direct links:\n• Examination Portal: ${destinationUrl}/examination\n• Old Question Papers / Circulars: ${destinationUrl}/circulars\n• Student Resources: ${destinationUrl}/students`
+                : isHindi
+                ? `${targetName} (${destinationUrl}) सफलतापूर्वक खोल दी गई है। ${searchTopic} के उपलब्ध अनुभाग:\n• परीक्षा पोर्टल: ${destinationUrl}/examination\n• पुराने प्रश्न पत्र / परिपत्र: ${destinationUrl}/circulars`
+                : `Successfully navigated to ${targetName} (${destinationUrl}). Identified resources for ${searchTopic}:\n• Examination Section: ${destinationUrl}/examination\n• Question Papers & Circulars: ${destinationUrl}/circulars`,
+            },
+            status: 'pending',
+            expectedOutcome: 'Direct verified findings reported in chat',
+          },
+        ];
+
+        return {
+          goal,
+          summary: `Autonomous multi-step research on ${targetName} for ${searchTopic}.`,
+          createdAt: Date.now(),
+          steps,
+        };
+      }
 
       const steps: PlanStep[] = [
         {
@@ -1384,6 +1472,216 @@ export class MockLocalAIAdapter implements AIProviderAdapter {
     isHindi: boolean,
     isHinglish: boolean
   ): string {
+    // 0a. Mathematical and Calculation Evaluation (e.g. "1+1 kitna hota hai?", "Calculate 25 * 4", "100 / 5")
+    const mathResult = evaluateMathExpression(goal);
+    if (mathResult.isMath && mathResult.result !== undefined) {
+      if (isHindi) {
+        return `${mathResult.calculation} (${mathResult.result}) होता है।`;
+      }
+      if (isHinglish) {
+        return `${mathResult.calculation} hota hai.`;
+      }
+      return `${mathResult.calculation}.`;
+    }
+
+    // 0b. Artificial Intelligence Overview (e.g. "What is artificial intelligence?", "AI kya hai?")
+    if (
+      lower.includes('artificial intelligence') ||
+      lower.includes('ai kya hai') ||
+      lower.includes('what is ai') ||
+      lower.includes('ai kya hota hai') ||
+      (/\bai\b/i.test(lower) && (lower.startsWith('what is') || lower.includes('samjhao') || lower.includes('explain')))
+    ) {
+      if (isHindi) {
+        return `आर्टिफिशियल इंटेलिजेंस (AI - कृत्रिम बुद्धिमत्ता) कंप्यूटर विज्ञान की वह शाखा है जो मशीनों को मानव मस्तिष्क की तरह सोचने, सीखने, समस्या सुलझाने और निर्णय लेने में सक्षम बनाती है।
+
+एआई के मुख्य घटक:
+1. मशीन लर्निंग (Machine Learning): कंप्यूटर को स्पष्ट रूप से प्रोग्राम किए बिना डेटा से सीखने की क्षमता प्रदान करता है।
+2. डीप लर्निंग और न्यूरल नेटवर्क (Deep Learning): मानव मस्तिष्क के न्यूरॉन्स से प्रेरित बहुस्तरीय नेटवर्क जो जटिल पैटर्न पहचानते हैं।
+3. नेचुरल लैंग्वेज प्रोसेसिंग (NLP): मानव भाषा (जैसे हिंदी या अंग्रेजी) को समझना और उत्पन्न करना।
+4. कंप्यूटर विज़न (Computer Vision): छवियों और वीडियो से सार्थक जानकारी निकालना।
+
+व्यावहारिक अनुप्रयोग:
+• स्वायत्त वाहन (Autonomous Vehicles)
+• स्वास्थ्य सेवा और रोग निदान
+• व्यक्तिगत डिजिटल सहायक (Personal Assistants)
+• भाषा अनुवाद और स्वचालित कोडिंग।`;
+      }
+
+      if (isHinglish) {
+        return `Artificial Intelligence (AI) computer science ki ek advanced field hai jo machines aur computers ko human intelligence jaise tasks perform karne ke capable banati hai — jaise reasoning, problem-solving, learning, aur decision-making.
+
+AI ke Core Components:
+1. Machine Learning (ML): Algorithms jo large datasets analyze karke patterns seekhte hain aur predictions karte hain.
+2. Deep Learning (DL): Multi-layered Artificial Neural Networks jo audio, image, aur complex data process karte hain.
+3. Natural Language Processing (NLP): Computers ko human languages (jaise English, Hindi) comprehend aur generate karne me help karta hai.
+4. Computer Vision: Visual world (images, video streams) ko interpret aur recognize karna.
+
+Real-World Applications:
+• Virtual Assistants (Siri, Alexa, Gemini)
+• Recommendation Engines (YouTube, Netflix, Amazon)
+• Autonomous Self-Driving Cars
+• Medical Diagnostics aur Predictive Healthcare.`;
+      }
+
+      return `Artificial Intelligence (AI) is the branch of computer science dedicated to building machines capable of performing tasks that typically require human intelligence, such as visual perception, speech recognition, decision-making, and natural language translation.
+
+Core Disciplines of AI:
+1. Machine Learning (ML): Statistical algorithms that train on large datasets to recognize patterns and make predictions without explicit programming.
+2. Deep Learning (DL): Multi-layered artificial neural networks inspired by biological neural structures that power cutting-edge vision, speech, and generative models.
+3. Natural Language Processing (NLP): Techniques that enable computers to interpret, translate, and generate human language fluently.
+4. Computer Vision & Robotics: Systems that process image/video data and manipulate physical environments.
+
+Primary Applications:
+• Generative AI & Autonomous Agents
+• Healthcare Diagnostics & Drug Discovery
+• Autonomous Navigation & Robotics
+• Real-time Predictive Modeling & Finance.`;
+    }
+
+    // 0c. JavaScript Promises Explanation (e.g. "Explain JavaScript promises", "Promises in JS kya hai?")
+    if (
+      lower.includes('promise') &&
+      (lower.includes('javascript') || lower.includes('js') || lower.includes('explain') || lower.includes('samjhao') || lower.includes('kya hai') || lower.includes('kya hota'))
+    ) {
+      if (isHindi) {
+        return `जावास्क्रिप्ट में प्रॉमिस (Promise) एक ऑब्जेक्ट है जो किसी एसिंक्रोनस (Asynchronous) ऑपरेशन के अंतिम परिणाम (सफलता या विफलता) का प्रतिनिधित्व करता है।
+
+प्रॉमिस की 3 अवस्थाएँ (States):
+1. Pending: प्रारंभिक स्थिति, जब ऑपरेशन अभी चल रहा हो।
+2. Fulfilled (Resolved): जब ऑपरेशन सफलतापूर्वक पूरा हो जाए।
+3. Rejected: जब ऑपरेशन में कोई त्रुटि (Error) आ जाए।
+
+मूल सिंटैक्स और उपयोग:
+\`\`\`javascript
+const fetchData = new Promise((resolve, reject) => {
+  setTimeout(() => {
+    const success = true;
+    if (success) resolve("Data successfully fetched!");
+    else reject("Fetch failed.");
+  }, 1000);
+});
+
+fetchData
+  .then((data) => console.log(data))
+  .catch((error) => console.error(error))
+  .finally(() => console.log("Operation finished."));
+\`\`\`
+
+आधुनिक विकल्प (Async/Await):
+\`\`\`javascript
+async function load() {
+  try {
+    const data = await fetchData;
+    console.log(data);
+  } catch (err) {
+    console.error(err);
+  }
+}
+\`\`\`
+प्रॉमिस का सबसे बड़ा लाभ यह है कि यह 'कॉलबैक हेल' (Callback Hell) की समस्या को समाप्त करता है।`;
+      }
+
+      if (isHinglish) {
+        return `JavaScript me Promise ek object hota hai jo kisi asynchronous operation ke eventual completion (success ya failure) aur uski resulting value ko represent karta hai.
+
+Promise ki 3 Main States hoti hain:
+1. Pending: Initial state, operation abhi in-progress hai.
+2. Fulfilled: Asynchronous operation successfully complete ho gaya (resolve hua).
+3. Rejected: Operation fail ho gaya (error aayi, reject hua).
+
+Example Code:
+\`\`\`javascript
+const myPromise = new Promise((resolve, reject) => {
+  setTimeout(() => {
+    let success = true;
+    if (success) {
+      resolve("Task completed successfully! 🚀");
+    } else {
+      reject("Error: Task failed ❌");
+    }
+  }, 1000);
+});
+
+// Consuming with .then() and .catch()
+myPromise
+  .then(result => console.log(result))
+  .catch(error => console.error(error));
+\`\`\`
+
+Modern Async/Await Approach:
+\`\`\`javascript
+async function runTask() {
+  try {
+    const res = await myPromise;
+    console.log(res);
+  } catch (err) {
+    console.error(err);
+  }
+}
+\`\`\`
+Promises ka sabse bada benefit "Callback Hell" aur nested pyramids of doom ko avoid karna hai.`;
+      }
+
+      return `In JavaScript, a Promise is an object representing the eventual completion or failure of an asynchronous operation and its resulting value.
+
+A Promise exists in one of three states:
+1. Pending: Initial state; the asynchronous operation is still executing.
+2. Fulfilled: The operation completed successfully, producing a resolved value.
+3. Rejected: The operation failed, returning a reason or Error object.
+
+Core Syntax:
+\`\`\`javascript
+const fetchUserData = new Promise((resolve, reject) => {
+  setTimeout(() => {
+    const userFound = true;
+    if (userFound) {
+      resolve({ id: 101, name: "AdaL User" });
+    } else {
+      reject(new Error("User not found"));
+    }
+  }, 1000);
+});
+
+// Consuming via .then() and .catch()
+fetchUserData
+  .then((user) => console.log("User:", user.name))
+  .catch((err) => console.error("Error:", err.message))
+  .finally(() => console.log("Request finished"));
+\`\`\`
+
+Modern Asynchronous Pattern (Async/Await):
+\`\`\`javascript
+async function getUser() {
+  try {
+    const user = await fetchUserData;
+    console.log(user);
+  } catch (err) {
+    console.error(err);
+  }
+}
+\`\`\`
+Key Advantage: Promises eliminate nested callback hell and integrate cleanly with try/catch blocks via async/await.`;
+    }
+
+    // 0d. Capital of India (e.g. "What is the capital of India?", "Bharat ki rajdhani kya hai?")
+    if (
+      (lower.includes('capital of india') ||
+        lower.includes('bharat ki rajdhani') ||
+        lower.includes('india ki capital') ||
+        lower.includes('capital of bharat') ||
+        (lower.includes('capital') && lower.includes('india'))) &&
+      !lower.includes('kholo')
+    ) {
+      if (isHindi) {
+        return `भारत की राजधानी **नई दिल्ली** (New Delhi) है।`;
+      }
+      if (isHinglish) {
+        return `India ki capital **New Delhi** hai.`;
+      }
+      return `The capital of India is **New Delhi**.`;
+    }
+
     // 0. Saiyaara Song / Topic Overview ("What is Saiyaara?", "Saiyaara kya hai?")
     if (
       lower.includes('saiyaara') ||
@@ -1945,14 +2243,32 @@ Core Curriculum Units:
     }
 
     // 9. Default General Conversational Response
+    const isAboutAssistant =
+      lower.includes('who are you') ||
+      lower.includes('tum kaun ho') ||
+      lower.includes('aap kaun hain') ||
+      lower.includes('what is adal nexus') ||
+      lower.includes('adal nexus kya hai') ||
+      lower.includes('about yourself');
+
+    if (isAboutAssistant) {
+      if (isHindi) {
+        return `नमस्ते! मैं AdaL Nexus हूँ — आपका बुद्धिमान स्वायत्त वेब ब्राउज़र सहायक। मैं वेब नेविगेशन, बहु-चरणीय शोध, गणितीय गणना और आपके प्रश्नों के उत्तर देने में आपकी सहायता कर सकता हूँ।`;
+      }
+      if (isHinglish) {
+        return `Namaste! Main AdaL Nexus hoon — aapka intelligent autonomous browser agent. Main web navigation, multi-step research, calculations aur questions answer karne me aapki help kar sakta hoon.`;
+      }
+      return `Hello! I am AdaL Nexus, your intelligent autonomous browser assistant. I can navigate websites, conduct multi-step web research, perform mathematical calculations, and answer technical and general questions.`;
+    }
+
     if (isHindi) {
-      return `नमस्ते! आपके प्रश्न "${goal}" के संबंध में:\n\nAdaL Nexus आपका बुद्धिमान ब्राउज़र सहायक है। आप मुझसे तकनीकी प्रश्न पूछ सकते हैं, उत्पाद सिफारिशें प्राप्त कर सकते हैं, या विशिष्ट वेबसाइट खोलने का निर्देश दे सकते हैं (जैसे "यूट्यूब खोलो" या "अमेज़न ओपन करो")। यदि आपको किसी विशिष्ट विषय पर सहायता चाहिए, तो कृपया बताएं!`;
+      return `आपके प्रश्न "${goal}" के संबंध में:\n\nयह एक विचारणीय विषय है। यदि आपको इसके संबंध में विशिष्ट उदाहरण, चरणबद्ध विवरण या वेब शोध की आवश्यकता है, तो कृपया मुझे बताएं।`;
     }
 
     if (isHinglish) {
-      return `Namaste! Aapke question "${goal}" ke baare me:\n\nAdaL Nexus aapka intelligent browser agent hai. Aap mujhse kisi bhi topic par guidance le sakte hain, questions pooch sakte hain, ya direct browser commands de sakte hain (jaise "YouTube open karo", "LinkedIn kholo", ya "Amazon par laptop search karo"). Bataiye mai aapki aur kya madad kar sakta hoon?`;
+      return `Aapke question "${goal}" ke baare me:\n\nYe ek important topic hai. Agar aapko iske baare me step-by-step guidance, specific examples, ya web research chahiye toh batayein!`;
     }
 
-    return `Hello! In response to your inquiry regarding "${goal}":\n\nI am AdaL Nexus, your intelligent autonomous browser assistant. I can answer questions conversationally, explain technical concepts, provide buying advice, or execute real browser actions when explicitly instructed (such as "Open LinkedIn", "Open Amazon", or "Search laptops on Amazon"). How can I assist you further with this?`;
+    return `Regarding your inquiry "${goal}":\n\nThis is a great question. If you need a more specific breakdown, code examples, or research on this topic, please let me know.`;
   }
 }

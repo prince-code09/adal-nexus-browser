@@ -139,6 +139,8 @@ export const CompanionPanel: React.FC<CompanionPanelProps> = ({
   const [activeTab, setActiveTab] = useState<'chat' | 'plan' | 'logs' | 'artifacts'>('chat');
   const [deletingPath, setDeletingPath] = useState<string | null>(null);
   const [isListening, setIsListening] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [recordingDuration, setRecordingDuration] = useState(0);
   const [speechLang, setSpeechLang] = useState<'en-IN' | 'hi-IN' | 'hinglish'>('en-IN');
   const [speechError, setSpeechError] = useState<string | null>(null);
   const [attachedImage, setAttachedImage] = useState<AttachedImage | null>(null);
@@ -147,93 +149,132 @@ export const CompanionPanel: React.FC<CompanionPanelProps> = ({
   const logEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const recognitionRef = useRef<any>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const recordingTimerRef = useRef<any>(null);
   const isLight = theme === 'light';
 
-  // Voice Input via Chromium Web Speech API with Device Verification & Fallback
+  // Voice Input via MediaRecorder + Secure Multimodal Audio Transcription
   const startVoiceInput = async () => {
     setSpeechError(null);
+    setIsTranscribing(false);
 
     // Verify microphone hardware access
-    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        stream.getTracks().forEach((track) => track.stop());
-      } catch (mediaErr: any) {
-        setIsListening(false);
-        if (mediaErr.name === 'NotAllowedError' || mediaErr.name === 'PermissionDeniedError') {
-          setSpeechError('Microphone permission was denied. Please allow microphone access in Windows or app settings.');
-          return;
-        }
-        if (mediaErr.name === 'NotFoundError' || mediaErr.name === 'DevicesNotFoundError') {
-          setSpeechError('No microphone detected. Please connect an audio input device.');
-          return;
-        }
-      }
-    }
-
-    const SpeechRecognition =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-
-    if (!SpeechRecognition) {
-      setSpeechError('Speech recognition is not supported in this Chromium/Electron build. Please use typed input.');
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setSpeechError('Microphone audio capture is not supported in this environment. Please use typed input.');
       return;
     }
 
     try {
-      if (recognitionRef.current) {
-        recognitionRef.current.abort();
-      }
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaStreamRef.current = stream;
 
-      const recognition = new SpeechRecognition();
-      recognition.continuous = false;
-      recognition.interimResults = false;
-      recognition.lang = speechLang === 'hinglish' ? 'hi-IN' : speechLang;
+      // Select supported audio mime type
+      const mimeCandidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4'];
+      const supportedMime =
+        mimeCandidates.find((m) => (window as any).MediaRecorder?.isTypeSupported?.(m)) || '';
 
-      recognition.onstart = () => {
+      const recorder = supportedMime ? new MediaRecorder(stream, { mimeType: supportedMime }) : new MediaRecorder(stream);
+      mediaRecorderRef.current = recorder;
+      audioChunksRef.current = [];
+
+      recorder.ondataavailable = (event: BlobEvent) => {
+        if (event.data && event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      recorder.onstart = () => {
         setIsListening(true);
+        setRecordingDuration(0);
+        if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+        recordingTimerRef.current = setInterval(() => {
+          setRecordingDuration((prev) => prev + 1);
+        }, 1000);
       };
 
-      recognition.onresult = (event: any) => {
-        const transcript = event.results?.[0]?.[0]?.transcript;
-        if (transcript) {
-          setInputText((prev) => (prev ? `${prev} ${transcript}` : transcript));
-        }
-      };
-
-      recognition.onerror = (event: any) => {
+      recorder.onerror = (err: any) => {
         setIsListening(false);
-        const err = event.error || '';
-        if (err === 'not-allowed') {
-          setSpeechError('Microphone access was denied. Please grant microphone permissions.');
-        } else if (err === 'no-speech') {
-          setSpeechError('No speech detected. Please speak clearly into your microphone.');
-        } else if (err === 'network') {
-          setSpeechError('Speech network service unavailable: Chromium cloud speech was unreachable. You can retry or use typed input below.');
-        } else if (err === 'aborted') {
-          // User aborted
-        } else {
-          setSpeechError(`Voice input error (${err || 'capture failed'}). Please retry or use typed input below.`);
+        if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+        setSpeechError(`Audio recording error: ${err?.message || 'recording failed'}. Please retry.`);
+      };
+
+      recorder.onstop = async () => {
+        if (recordingTimerRef.current) {
+          clearInterval(recordingTimerRef.current);
+          recordingTimerRef.current = null;
         }
+
+        // Release hardware audio tracks immediately
+        if (mediaStreamRef.current) {
+          mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+          mediaStreamRef.current = null;
+        }
+
+        const mime = recorder.mimeType || 'audio/webm';
+        const blob = new Blob(audioChunksRef.current, { type: mime });
+
+        if (blob.size < 500) {
+          setIsTranscribing(false);
+          setSpeechError('Recording too short or no audio detected. Please hold microphone and speak clearly.');
+          return;
+        }
+
+        setIsTranscribing(true);
+
+        const reader = new FileReader();
+        reader.onloadend = async () => {
+          try {
+            const base64Data = reader.result as string;
+            if (window.electronAPI && typeof window.electronAPI.transcribeAudio === 'function') {
+              const res = await window.electronAPI.transcribeAudio(base64Data, mime, speechLang);
+              if (res.success && res.text) {
+                const recognized = res.text.trim();
+                setInputText((prev) => (prev ? `${prev} ${recognized}` : recognized));
+                setSpeechError(null);
+                inputRef.current?.focus();
+              } else {
+                setSpeechError(res.error || 'Audio transcription was unable to recognize speech. Please retry or use typed input.');
+              }
+            } else {
+              setSpeechError('Voice transcription bridge is not available. Please use typed input.');
+            }
+          } catch (transcribeErr: any) {
+            setSpeechError(`Transcription error: ${transcribeErr.message}. Please retry or use typed input.`);
+          } finally {
+            setIsTranscribing(false);
+          }
+        };
+
+        reader.onerror = () => {
+          setIsTranscribing(false);
+          setSpeechError('Failed to process recorded audio data. Please retry.');
+        };
+
+        reader.readAsDataURL(blob);
       };
 
-      recognition.onend = () => {
-        setIsListening(false);
-      };
-
-      recognitionRef.current = recognition;
-      recognition.start();
-    } catch (err: any) {
+      recorder.start(250);
+    } catch (mediaErr: any) {
       setIsListening(false);
-      setSpeechError(`Voice recognition unavailable: ${err.message}. Please use typed input.`);
+      if (mediaErr.name === 'NotAllowedError' || mediaErr.name === 'PermissionDeniedError') {
+        setSpeechError('Microphone permission was denied. Please allow microphone access in Windows or app settings.');
+      } else if (mediaErr.name === 'NotFoundError' || mediaErr.name === 'DevicesNotFoundError') {
+        setSpeechError('No microphone detected. Please connect an audio input device.');
+      } else {
+        setSpeechError(`Microphone access error: ${mediaErr.message || 'permission error'}.`);
+      }
     }
   };
 
   const stopVoiceInput = () => {
-    if (recognitionRef.current) {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
       try {
-        recognitionRef.current.stop();
-      } catch {}
+        mediaRecorderRef.current.stop();
+      } catch (err) {
+        console.warn('[Voice] Error stopping MediaRecorder:', err);
+      }
     }
     setIsListening(false);
   };
@@ -1164,15 +1205,23 @@ export const CompanionPanel: React.FC<CompanionPanelProps> = ({
           <div className="mb-2 p-1.5 px-2.5 rounded-lg bg-red-600/20 border border-red-500/40 text-red-200 text-[11px] flex items-center justify-between animate-pulse">
             <span className="flex items-center gap-2 font-semibold">
               <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping" />
-              Listening ({speechLang === 'hi-IN' ? 'Hindi / हिंदी' : speechLang === 'hinglish' ? 'Hinglish / हिंग्लिश' : 'English'})... Speak now
+              Recording ({speechLang === 'hi-IN' ? 'Hindi' : speechLang === 'hinglish' ? 'Hinglish' : 'English'})... {recordingDuration}s
             </span>
             <button
               type="button"
               onClick={stopVoiceInput}
               className="px-2 py-0.5 rounded bg-red-600 hover:bg-red-500 text-white text-[10px] font-bold cursor-pointer"
             >
-              Done
+              Stop & Transcribe
             </button>
+          </div>
+        )}
+
+        {/* Speech Transcribing State Banner */}
+        {isTranscribing && (
+          <div className="mb-2 p-1.5 px-2.5 rounded-lg bg-violet-600/20 border border-violet-500/40 text-violet-200 text-[11px] flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-violet-400 animate-spin border-2 border-violet-200 border-t-transparent" />
+            <span>Transcribing audio into text ({speechLang === 'hi-IN' ? 'Hindi' : speechLang === 'hinglish' ? 'Hinglish' : 'English'})...</span>
           </div>
         )}
 
@@ -1266,18 +1315,32 @@ export const CompanionPanel: React.FC<CompanionPanelProps> = ({
 
               <button
                 type="button"
-                disabled={isBusy}
+                disabled={isBusy || isTranscribing}
                 onClick={isListening ? stopVoiceInput : startVoiceInput}
                 className={`p-1.5 rounded-lg border transition-all cursor-pointer flex items-center gap-1 text-[11px] ${
                   isListening
                     ? 'bg-red-600 text-white border-red-500 shadow-md shadow-red-600/40 animate-pulse'
+                    : isTranscribing
+                    ? 'bg-violet-600/30 text-violet-200 border-violet-500/50'
                     : isLight
                     ? 'border-slate-300 hover:bg-slate-200 text-slate-600'
                     : 'border-white/10 hover:bg-white/10 text-slate-300'
                 } disabled:opacity-40 disabled:cursor-not-allowed`}
-                title={isListening ? 'Stop voice recording' : `Voice Input (${speechLang === 'hi-IN' ? 'Hindi' : speechLang === 'hinglish' ? 'Hinglish' : 'English'})`}
+                title={
+                  isTranscribing
+                    ? 'Transcribing speech...'
+                    : isListening
+                    ? 'Stop voice recording'
+                    : `Voice Input (${speechLang === 'hi-IN' ? 'Hindi' : speechLang === 'hinglish' ? 'Hinglish' : 'English'})`
+                }
               >
-                {isListening ? <MicOff size={13} /> : <Mic size={13} />}
+                {isTranscribing ? (
+                  <Loader2 size={13} className="animate-spin text-violet-300" />
+                ) : isListening ? (
+                  <MicOff size={13} />
+                ) : (
+                  <Mic size={13} />
+                )}
                 <span className="text-[10px] font-semibold">{speechLang === 'hi-IN' ? 'HI' : speechLang === 'hinglish' ? 'HING' : 'EN'}</span>
               </button>
 

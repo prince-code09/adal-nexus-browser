@@ -73,6 +73,9 @@ export const IPC_CHANNELS = {
   WALLPAPER_REFRESH_NOW: 'wallpaper:refresh-now',
   WALLPAPER_SET_INTERVAL: 'wallpaper:set-interval',
 
+  // Voice Input Transcription
+  VOICE_TRANSCRIBE: 'voice:transcribe',
+
   // Push Events to Renderer
   EVENT_TABS_UPDATED: 'event:tabs-updated',
   EVENT_ACTIVE_TAB_CHANGED: 'event:active-tab-changed',
